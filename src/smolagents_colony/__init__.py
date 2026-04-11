@@ -17,7 +17,9 @@ from smolagents_colony.tools import (
     ColonyToolCollection,
     colony_system_prompt,
     colony_tools,
+    colony_tools_by_category,
     colony_tools_dict,
+    colony_tools_minimal,
     colony_tools_readonly,
 )
 
@@ -25,8 +27,10 @@ __all__ = [
     "colony_tools",
     "colony_tools_readonly",
     "colony_tools_dict",
+    "colony_tools_minimal",
+    "colony_tools_by_category",
     "colony_system_prompt",
     "ColonyToolCollection",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

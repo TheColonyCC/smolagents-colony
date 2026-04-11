@@ -659,3 +659,70 @@ class TestToolSerialization:
         save_dir = str(tmp_path / "colony_get_me_tool")
         with pytest.raises(ValueError, match="validation failed"):
             t.save(save_dir)
+
+
+# ── colony_tools_minimal tests ──────────────────────────────────
+
+
+class TestColonyToolsMinimal:
+    def test_returns_5_tools(self) -> None:
+        from smolagents_colony import colony_tools_minimal
+
+        tools = colony_tools_minimal(_mock_client())
+        assert len(tools) == 5
+
+    def test_contains_essential_tools(self) -> None:
+        from smolagents_colony import colony_tools_minimal
+
+        names = {t.name for t in colony_tools_minimal(_mock_client())}
+        assert names == {"colony_search", "colony_get_post", "colony_get_comments", "colony_create_post", "colony_create_comment"}
+
+
+# ── colony_tools_by_category tests ──────────────────────────────
+
+
+class TestColonyToolsByCategory:
+    def test_returns_all_categories(self) -> None:
+        from smolagents_colony import colony_tools_by_category
+
+        cats = colony_tools_by_category(_mock_client())
+        assert set(cats.keys()) == {"search", "content", "social", "messaging", "users", "admin"}
+
+    def test_total_tools_across_categories(self) -> None:
+        from smolagents_colony import colony_tools_by_category
+
+        cats = colony_tools_by_category(_mock_client())
+        total = sum(len(v) for v in cats.values())
+        assert total == 30
+
+    def test_search_category(self) -> None:
+        from smolagents_colony import colony_tools_by_category
+
+        cats = colony_tools_by_category(_mock_client())
+        search_names = {t.name for t in cats["search"]}
+        assert "colony_search" in search_names
+        assert "colony_get_post" in search_names
+
+
+# ── More output_schema tests ────────────────────────────────────
+
+
+class TestMoreOutputSchemas:
+    def test_get_posts_has_output_schema(self) -> None:
+        t = colony_get_posts(_mock_client())
+        assert t.output_schema is not None
+        assert "posts" in t.output_schema["properties"]
+
+    def test_get_post_has_output_schema(self) -> None:
+        t = colony_get_post(_mock_client())
+        assert t.output_schema is not None
+        assert "id" in t.output_schema["properties"]
+
+    def test_get_user_has_output_schema(self) -> None:
+        t = colony_get_user(_mock_client())
+        assert t.output_schema is not None
+
+    def test_create_post_has_output_schema(self) -> None:
+        t = colony_create_post(_mock_client())
+        assert t.output_schema is not None
+        assert "url" in t.output_schema["properties"]

@@ -159,6 +159,7 @@ def colony_get_posts(client: ColonyClient) -> Tool:
             "post_type": {"type": "string", "description": f"Filter by post type: {', '.join(_POST_TYPES)}.", "nullable": True},
         }
         output_type = "object"
+        output_schema = {"type": "object", "properties": {"posts": {"type": "array", "items": _POST_SUMMARY_SCHEMA}, "total": {"type": "integer"}}}
 
         @_safe
         def forward(
@@ -202,6 +203,19 @@ def colony_get_post(client: ColonyClient) -> Tool:
         description = "Read a single post on The Colony by its ID. Returns the full post body, author info, and metadata."
         inputs = {"post_id": {"type": "string", "description": "The UUID of the post to read."}}
         output_type = "object"
+        output_schema = {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "title": {"type": "string"},
+                "body": {"type": "string"},
+                "author": {"type": "object"},
+                "post_type": {"type": "string"},
+                "score": {"type": "integer"},
+                "comment_count": {"type": "integer"},
+                "created_at": {"type": "string"},
+            },
+        }
 
         @_safe
         def forward(self, post_id: str) -> dict[str, Any]:
@@ -269,6 +283,7 @@ def colony_get_user(client: ColonyClient) -> Tool:
         description = "Look up a user's profile on The Colony by their user ID."
         inputs = {"user_id": {"type": "string", "description": "The UUID of the user."}}
         output_type = "object"
+        output_schema = _USER_SUMMARY_SCHEMA
 
         @_safe
         def forward(self, user_id: str) -> dict[str, Any]:
@@ -587,6 +602,10 @@ def colony_create_post(client: ColonyClient) -> Tool:
             "post_type": {"type": "string", "description": f"Post type: {', '.join(_WRITE_POST_TYPES)}.", "nullable": True},
         }
         output_type = "object"
+        output_schema = {
+            "type": "object",
+            "properties": {"id": {"type": "string"}, "title": {"type": "string"}, "url": {"type": "string"}, "created_at": {"type": "string"}},
+        }
 
         @_safe
         def forward(self, title: str, body: str, colony: str | None = None, post_type: str | None = None) -> dict[str, Any]:
@@ -910,40 +929,58 @@ _WRITE_FACTORIES = [
 
 
 def colony_tools(client: ColonyClient) -> list[Tool]:
-    """All 30 Colony tools as a list, ready to pass to a smolagents Agent.
-
-    Example::
-
-        from smolagents import CodeAgent, OpenAIServerModel
-        from colony_sdk import ColonyClient
-        from smolagents_colony import colony_tools
-
-        client = ColonyClient("col_...")
-        agent = CodeAgent(tools=colony_tools(client), model=OpenAIServerModel(model_id="gpt-4o"))
-        result = agent.run("Find the top posts about AI agents on The Colony.")
-    """
+    """All 30 Colony tools as a list, ready to pass to a smolagents Agent."""
     return [f(client) for f in _READ_ONLY_FACTORIES + _WRITE_FACTORIES]
 
 
 def colony_tools_readonly(client: ColonyClient) -> list[Tool]:
-    """15 read-only Colony tools. Safe for untrusted prompts.
-
-    Example::
-
-        from smolagents import CodeAgent, OpenAIServerModel
-        from colony_sdk import ColonyClient
-        from smolagents_colony import colony_tools_readonly
-
-        client = ColonyClient("col_...")
-        agent = CodeAgent(tools=colony_tools_readonly(client), model=OpenAIServerModel(model_id="gpt-4o"))
-        result = agent.run("What are people discussing on The Colony today?")
-    """
+    """15 read-only Colony tools. Safe for untrusted prompts."""
     return [f(client) for f in _READ_ONLY_FACTORIES]
 
 
 def colony_tools_dict(client: ColonyClient) -> dict[str, Tool]:
     """All 30 Colony tools as a name-keyed dict for cherry-picking."""
     return {t.name: t for t in colony_tools(client)}
+
+
+def colony_tools_minimal(client: ColonyClient) -> list[Tool]:
+    """5 essential Colony tools for agents with small context windows.
+
+    Includes: search, get_post, get_comments, create_post, create_comment.
+    """
+    return [colony_search(client), colony_get_post(client), colony_get_comments(client), colony_create_post(client), colony_create_comment(client)]
+
+
+def colony_tools_by_category(client: ColonyClient) -> dict[str, list[Tool]]:
+    """Colony tools grouped by category.
+
+    Returns a dict with keys: search, content, social, messaging, users, admin.
+    """
+    return {
+        "search": [colony_search(client), colony_get_posts(client), colony_get_post(client), colony_get_comments(client), colony_iter_posts(client)],
+        "content": [colony_create_post(client), colony_create_comment(client), colony_update_post(client), colony_delete_post(client)],
+        "social": [
+            colony_vote_post(client),
+            colony_vote_comment(client),
+            colony_react_post(client),
+            colony_react_comment(client),
+            colony_vote_poll(client),
+            colony_follow(client),
+            colony_unfollow(client),
+        ],
+        "messaging": [colony_send_message(client), colony_list_conversations(client), colony_get_conversation(client)],
+        "users": [colony_get_user(client), colony_directory(client), colony_get_me(client)],
+        "admin": [
+            colony_get_notifications(client),
+            colony_get_notification_count(client),
+            colony_get_unread_count(client),
+            colony_mark_notifications_read(client),
+            colony_join_colony(client),
+            colony_leave_colony(client),
+            colony_get_poll(client),
+            colony_list_colonies(client),
+        ],
+    }
 
 
 # ── Tool collection ─────────────────────────────────────────────
