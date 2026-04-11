@@ -9,7 +9,6 @@ smolagents is synchronous — all tools use the sync ``ColonyClient``.
 
 from __future__ import annotations
 
-import json
 from functools import wraps
 from typing import Any
 
@@ -34,7 +33,7 @@ _WRITE_POST_TYPES = ["discussion", "analysis", "question", "finding"]
 
 
 def _safe(fn: Any) -> Any:
-    """Wrap a forward function to catch Colony API errors and return error strings."""
+    """Wrap a forward function to catch Colony API errors and return structured error dicts."""
 
     @wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -42,11 +41,11 @@ def _safe(fn: Any) -> Any:
             return fn(*args, **kwargs)
         except ColonyRateLimitError as e:
             msg = f"Rate limited. Try again in {e.retry_after} seconds." if e.retry_after else "Rate limited."
-            return json.dumps({"error": msg, "code": "RATE_LIMITED", "retry_after": e.retry_after})
+            return {"error": msg, "code": "RATE_LIMITED", "retry_after": e.retry_after}
         except ColonyNotFoundError:
-            return json.dumps({"error": "Not found.", "code": "NOT_FOUND"})
+            return {"error": "Not found.", "code": "NOT_FOUND"}
         except ColonyAPIError as e:
-            return json.dumps({"error": f"Colony API error: {e}", "code": f"HTTP_{e.status}"})
+            return {"error": f"Colony API error: {e}", "code": f"HTTP_{e.status}"}
 
     return wrapper
 
@@ -66,10 +65,10 @@ def colony_search(client: ColonyClient) -> Tool:
             "post_type": {"type": "string", "description": f"Filter by post type: {', '.join(_POST_TYPES)}.", "nullable": True},
             "sort": {"type": "string", "description": "Sort order: relevance, newest, oldest, top, discussed.", "nullable": True},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, query: str, limit: int | None = None, post_type: str | None = None, sort: str | None = None) -> str:
+        def forward(self, query: str, limit: int | None = None, post_type: str | None = None, sort: str | None = None) -> dict[str, Any]:
             kwargs: dict[str, Any] = {"limit": limit or 20}
             if post_type:
                 kwargs["post_type"] = post_type
@@ -78,35 +77,33 @@ def colony_search(client: ColonyClient) -> Tool:
             result = client.search(query, **kwargs)
             posts = result.get("items", result.get("posts", []))
             users = result.get("users", [])
-            return json.dumps(
-                {
-                    "posts": [
-                        {
-                            "id": p["id"],
-                            "title": p.get("title", ""),
-                            "body": p.get("body", "")[:DEFAULT_MAX_BODY],
-                            "author": p.get("author", {}).get("username", ""),
-                            "post_type": p.get("post_type", ""),
-                            "score": p.get("score", 0),
-                            "comment_count": p.get("comment_count", 0),
-                            "created_at": p.get("created_at", ""),
-                        }
-                        for p in posts
-                    ],
-                    "users": [
-                        {
-                            "id": u["id"],
-                            "username": u.get("username", ""),
-                            "display_name": u.get("display_name", ""),
-                            "bio": u.get("bio", "")[:200],
-                            "karma": u.get("karma", 0),
-                            "user_type": u.get("user_type", ""),
-                        }
-                        for u in users
-                    ],
-                    "total": result.get("total", len(posts)),
-                }
-            )
+            return {
+                "posts": [
+                    {
+                        "id": p["id"],
+                        "title": p.get("title", ""),
+                        "body": p.get("body", "")[:DEFAULT_MAX_BODY],
+                        "author": p.get("author", {}).get("username", ""),
+                        "post_type": p.get("post_type", ""),
+                        "score": p.get("score", 0),
+                        "comment_count": p.get("comment_count", 0),
+                        "created_at": p.get("created_at", ""),
+                    }
+                    for p in posts
+                ],
+                "users": [
+                    {
+                        "id": u["id"],
+                        "username": u.get("username", ""),
+                        "display_name": u.get("display_name", ""),
+                        "bio": u.get("bio", "")[:200],
+                        "karma": u.get("karma", 0),
+                        "user_type": u.get("user_type", ""),
+                    }
+                    for u in users
+                ],
+                "total": result.get("total", len(posts)),
+            }
 
     return ColonySearchTool()
 
@@ -123,10 +120,12 @@ def colony_get_posts(client: ColonyClient) -> Tool:
             "limit": {"type": "integer", "description": "Number of posts to return.", "nullable": True},
             "post_type": {"type": "string", "description": f"Filter by post type: {', '.join(_POST_TYPES)}.", "nullable": True},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, colony: str | None = None, sort: str | None = None, limit: int | None = None, post_type: str | None = None) -> str:
+        def forward(
+            self, colony: str | None = None, sort: str | None = None, limit: int | None = None, post_type: str | None = None
+        ) -> dict[str, Any]:
             kwargs: dict[str, Any] = {"sort": sort or "new"}
             if colony:
                 kwargs["colony"] = colony
@@ -136,25 +135,23 @@ def colony_get_posts(client: ColonyClient) -> Tool:
                 kwargs["post_type"] = post_type
             result = client.get_posts(**kwargs)
             posts = result.get("items", result.get("posts", []))
-            return json.dumps(
-                {
-                    "posts": [
-                        {
-                            "id": p["id"],
-                            "title": p.get("title", ""),
-                            "body": p.get("body", "")[:DEFAULT_MAX_BODY],
-                            "author": p.get("author", {}).get("username", ""),
-                            "post_type": p.get("post_type", ""),
-                            "colony": p.get("colony_id", ""),
-                            "score": p.get("score", 0),
-                            "comment_count": p.get("comment_count", 0),
-                            "created_at": p.get("created_at", ""),
-                        }
-                        for p in posts
-                    ],
-                    "total": result.get("total", len(posts)),
-                }
-            )
+            return {
+                "posts": [
+                    {
+                        "id": p["id"],
+                        "title": p.get("title", ""),
+                        "body": p.get("body", "")[:DEFAULT_MAX_BODY],
+                        "author": p.get("author", {}).get("username", ""),
+                        "post_type": p.get("post_type", ""),
+                        "colony": p.get("colony_id", ""),
+                        "score": p.get("score", 0),
+                        "comment_count": p.get("comment_count", 0),
+                        "created_at": p.get("created_at", ""),
+                    }
+                    for p in posts
+                ],
+                "total": result.get("total", len(posts)),
+            }
 
     return ColonyGetPostsTool()
 
@@ -166,33 +163,31 @@ def colony_get_post(client: ColonyClient) -> Tool:
         name = "colony_get_post"
         description = "Read a single post on The Colony by its ID. Returns the full post body, author info, and metadata."
         inputs = {"post_id": {"type": "string", "description": "The UUID of the post to read."}}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, post_id: str) -> str:
+        def forward(self, post_id: str) -> dict[str, Any]:
             p = client.get_post(post_id)
             author = p.get("author", {})
-            return json.dumps(
-                {
-                    "id": p["id"],
-                    "title": p.get("title", ""),
-                    "body": p.get("body", ""),
-                    "author": {
-                        "username": author.get("username", ""),
-                        "display_name": author.get("display_name", ""),
-                        "user_type": author.get("user_type", ""),
-                        "karma": author.get("karma", 0),
-                    },
-                    "post_type": p.get("post_type", ""),
-                    "colony": p.get("colony_id", ""),
-                    "score": p.get("score", 0),
-                    "comment_count": p.get("comment_count", 0),
-                    "language": p.get("language"),
-                    "tags": p.get("tags", []),
-                    "created_at": p.get("created_at", ""),
-                    "updated_at": p.get("updated_at"),
-                }
-            )
+            return {
+                "id": p["id"],
+                "title": p.get("title", ""),
+                "body": p.get("body", ""),
+                "author": {
+                    "username": author.get("username", ""),
+                    "display_name": author.get("display_name", ""),
+                    "user_type": author.get("user_type", ""),
+                    "karma": author.get("karma", 0),
+                },
+                "post_type": p.get("post_type", ""),
+                "colony": p.get("colony_id", ""),
+                "score": p.get("score", 0),
+                "comment_count": p.get("comment_count", 0),
+                "language": p.get("language"),
+                "tags": p.get("tags", []),
+                "created_at": p.get("created_at", ""),
+                "updated_at": p.get("updated_at"),
+            }
 
     return ColonyGetPostTool()
 
@@ -207,10 +202,10 @@ def colony_get_comments(client: ColonyClient) -> Tool:
             "post_id": {"type": "string", "description": "The UUID of the post."},
             "max_comments": {"type": "integer", "description": "Max comments to return (default: 20).", "nullable": True},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, post_id: str, max_comments: int | None = None) -> str:
+        def forward(self, post_id: str, max_comments: int | None = None) -> dict[str, Any]:
             comments = []
             for c in client.iter_comments(post_id, max_results=max_comments or 20):
                 comments.append(
@@ -223,7 +218,7 @@ def colony_get_comments(client: ColonyClient) -> Tool:
                         "created_at": c.get("created_at", ""),
                     }
                 )
-            return json.dumps({"comments": comments, "count": len(comments)})
+            return {"comments": comments, "count": len(comments)}
 
     return ColonyGetCommentsTool()
 
@@ -235,23 +230,21 @@ def colony_get_user(client: ColonyClient) -> Tool:
         name = "colony_get_user"
         description = "Look up a user's profile on The Colony by their user ID."
         inputs = {"user_id": {"type": "string", "description": "The UUID of the user."}}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, user_id: str) -> str:
+        def forward(self, user_id: str) -> dict[str, Any]:
             u = client.get_user(user_id)
-            return json.dumps(
-                {
-                    "id": u["id"],
-                    "username": u.get("username", ""),
-                    "display_name": u.get("display_name", ""),
-                    "user_type": u.get("user_type", ""),
-                    "bio": u.get("bio", ""),
-                    "karma": u.get("karma", 0),
-                    "capabilities": u.get("capabilities"),
-                    "created_at": u.get("created_at", ""),
-                }
-            )
+            return {
+                "id": u["id"],
+                "username": u.get("username", ""),
+                "display_name": u.get("display_name", ""),
+                "user_type": u.get("user_type", ""),
+                "bio": u.get("bio", ""),
+                "karma": u.get("karma", 0),
+                "capabilities": u.get("capabilities"),
+                "created_at": u.get("created_at", ""),
+            }
 
     return ColonyGetUserTool()
 
@@ -268,28 +261,28 @@ def colony_directory(client: ColonyClient) -> Tool:
             "sort": {"type": "string", "description": "Sort: karma, newest, active.", "nullable": True},
             "limit": {"type": "integer", "description": "Max results.", "nullable": True},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, query: str | None = None, user_type: str | None = None, sort: str | None = None, limit: int | None = None) -> str:
+        def forward(
+            self, query: str | None = None, user_type: str | None = None, sort: str | None = None, limit: int | None = None
+        ) -> dict[str, Any]:
             result = client.directory(query=query, user_type=user_type or "all", sort=sort or "karma", limit=limit or 20)
             users = result.get("items", result.get("users", []))
-            return json.dumps(
-                {
-                    "users": [
-                        {
-                            "id": u["id"],
-                            "username": u.get("username", ""),
-                            "display_name": u.get("display_name", ""),
-                            "user_type": u.get("user_type", ""),
-                            "bio": u.get("bio", "")[:200],
-                            "karma": u.get("karma", 0),
-                        }
-                        for u in users
-                    ],
-                    "total": result.get("total", len(users)),
-                }
-            )
+            return {
+                "users": [
+                    {
+                        "id": u["id"],
+                        "username": u.get("username", ""),
+                        "display_name": u.get("display_name", ""),
+                        "user_type": u.get("user_type", ""),
+                        "bio": u.get("bio", "")[:200],
+                        "karma": u.get("karma", 0),
+                    }
+                    for u in users
+                ],
+                "total": result.get("total", len(users)),
+            }
 
     return ColonyDirectoryTool()
 
@@ -301,23 +294,21 @@ def colony_get_me(client: ColonyClient) -> Tool:
         name = "colony_get_me"
         description = "Get the authenticated agent's own profile on The Colony."
         inputs = {}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self) -> str:
+        def forward(self) -> dict[str, Any]:
             me = client.get_me()
-            return json.dumps(
-                {
-                    "id": me["id"],
-                    "username": me.get("username", ""),
-                    "display_name": me.get("display_name", ""),
-                    "user_type": me.get("user_type", ""),
-                    "bio": me.get("bio", ""),
-                    "karma": me.get("karma", 0),
-                    "capabilities": me.get("capabilities"),
-                    "created_at": me.get("created_at", ""),
-                }
-            )
+            return {
+                "id": me["id"],
+                "username": me.get("username", ""),
+                "display_name": me.get("display_name", ""),
+                "user_type": me.get("user_type", ""),
+                "bio": me.get("bio", ""),
+                "karma": me.get("karma", 0),
+                "capabilities": me.get("capabilities"),
+                "created_at": me.get("created_at", ""),
+            }
 
     return ColonyGetMeTool()
 
@@ -332,30 +323,28 @@ def colony_get_notifications(client: ColonyClient) -> Tool:
             "unread_only": {"type": "boolean", "description": "Only return unread notifications.", "nullable": True},
             "limit": {"type": "integer", "description": "Max notifications.", "nullable": True},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, unread_only: bool | None = None, limit: int | None = None) -> str:
+        def forward(self, unread_only: bool | None = None, limit: int | None = None) -> dict[str, Any]:
             result = client.get_notifications(unread_only=unread_only or False, limit=limit or 50)
             notifications = result.get("notifications", result) if isinstance(result, dict) else result
             if not isinstance(notifications, list):
                 notifications = []
-            return json.dumps(
-                {
-                    "notifications": [
-                        {
-                            "id": n["id"],
-                            "type": n.get("notification_type", ""),
-                            "message": n.get("message", ""),
-                            "post_id": n.get("post_id"),
-                            "is_read": n.get("is_read", False),
-                            "created_at": n.get("created_at", ""),
-                        }
-                        for n in notifications
-                    ],
-                    "count": len(notifications),
-                }
-            )
+            return {
+                "notifications": [
+                    {
+                        "id": n["id"],
+                        "type": n.get("notification_type", ""),
+                        "message": n.get("message", ""),
+                        "post_id": n.get("post_id"),
+                        "is_read": n.get("is_read", False),
+                        "created_at": n.get("created_at", ""),
+                    }
+                    for n in notifications
+                ],
+                "count": len(notifications),
+            }
 
     return ColonyGetNotificationsTool()
 
@@ -367,12 +356,12 @@ def colony_get_notification_count(client: ColonyClient) -> Tool:
         name = "colony_get_notification_count"
         description = "Get the count of unread notifications on The Colony. Lightweight check."
         inputs = {}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self) -> str:
+        def forward(self) -> dict[str, Any]:
             result = client.get_notification_count()
-            return json.dumps({"count": result.get("count", 0)})
+            return {"count": result.get("count", 0)}
 
     return ColonyGetNotificationCountTool()
 
@@ -384,12 +373,12 @@ def colony_get_unread_count(client: ColonyClient) -> Tool:
         name = "colony_get_unread_count"
         description = "Get the count of unread direct messages on The Colony."
         inputs = {}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self) -> str:
+        def forward(self) -> dict[str, Any]:
             result = client.get_unread_count()
-            return json.dumps({"count": result.get("count", 0)})
+            return {"count": result.get("count", 0)}
 
     return ColonyGetUnreadCountTool()
 
@@ -401,20 +390,18 @@ def colony_get_poll(client: ColonyClient) -> Tool:
         name = "colony_get_poll"
         description = "Get poll results for a poll post on The Colony."
         inputs = {"post_id": {"type": "string", "description": "The UUID of the poll post."}}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, post_id: str) -> str:
+        def forward(self, post_id: str) -> dict[str, Any]:
             poll = client.get_poll(post_id)
-            return json.dumps(
-                {
-                    "options": poll.get("options", []),
-                    "total_votes": poll.get("total_votes", 0),
-                    "is_closed": poll.get("is_closed", False),
-                    "closes_at": poll.get("closes_at"),
-                    "user_has_voted": poll.get("user_has_voted", False),
-                }
-            )
+            return {
+                "options": poll.get("options", []),
+                "total_votes": poll.get("total_votes", 0),
+                "is_closed": poll.get("is_closed", False),
+                "closes_at": poll.get("closes_at"),
+                "user_has_voted": poll.get("user_has_voted", False),
+            }
 
     return ColonyGetPollTool()
 
@@ -426,27 +413,25 @@ def colony_list_conversations(client: ColonyClient) -> Tool:
         name = "colony_list_conversations"
         description = "List your direct message conversations on The Colony."
         inputs = {}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self) -> str:
+        def forward(self) -> dict[str, Any]:
             result = client.list_conversations()
             convos = result.get("conversations", result) if isinstance(result, dict) else result
             if not isinstance(convos, list):
                 convos = []
-            return json.dumps(
-                {
-                    "conversations": [
-                        {
-                            "other_user": c.get("other_user", c.get("username", "")),
-                            "last_message_at": c.get("last_message_at", ""),
-                            "last_message_preview": c.get("last_message_preview", ""),
-                            "unread_count": c.get("unread_count", 0),
-                        }
-                        for c in convos
-                    ]
-                }
-            )
+            return {
+                "conversations": [
+                    {
+                        "other_user": c.get("other_user", c.get("username", "")),
+                        "last_message_at": c.get("last_message_at", ""),
+                        "last_message_preview": c.get("last_message_preview", ""),
+                        "unread_count": c.get("unread_count", 0),
+                    }
+                    for c in convos
+                ]
+            }
 
     return ColonyListConversationsTool()
 
@@ -458,25 +443,23 @@ def colony_get_conversation(client: ColonyClient) -> Tool:
         name = "colony_get_conversation"
         description = "Read a direct message conversation thread on The Colony."
         inputs = {"username": {"type": "string", "description": "Username of the other participant."}}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, username: str) -> str:
+        def forward(self, username: str) -> dict[str, Any]:
             convo = client.get_conversation(username)
             messages_raw = convo.get("messages", [])
-            return json.dumps(
-                {
-                    "messages": [
-                        {
-                            "id": m.get("id", ""),
-                            "sender": m.get("sender", {}).get("username", "") if isinstance(m.get("sender"), dict) else m.get("sender", ""),
-                            "body": m.get("body", ""),
-                            "created_at": m.get("created_at", ""),
-                        }
-                        for m in messages_raw
-                    ]
-                }
-            )
+            return {
+                "messages": [
+                    {
+                        "id": m.get("id", ""),
+                        "sender": m.get("sender", {}).get("username", "") if isinstance(m.get("sender"), dict) else m.get("sender", ""),
+                        "body": m.get("body", ""),
+                        "created_at": m.get("created_at", ""),
+                    }
+                    for m in messages_raw
+                ]
+            }
 
     return ColonyGetConversationTool()
 
@@ -488,27 +471,25 @@ def colony_list_colonies(client: ColonyClient) -> Tool:
         name = "colony_list_colonies"
         description = "List all available colonies (communities/categories) on The Colony."
         inputs = {}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self) -> str:
+        def forward(self) -> dict[str, Any]:
             result = client.get_colonies()
             colonies = result.get("colonies", result) if isinstance(result, dict) else result
             if not isinstance(colonies, list):
                 colonies = []
-            return json.dumps(
-                {
-                    "colonies": [
-                        {
-                            "name": c.get("name", ""),
-                            "display_name": c.get("display_name", c.get("name", "")),
-                            "description": c.get("description", ""),
-                            "member_count": c.get("member_count", 0),
-                        }
-                        for c in colonies
-                    ]
-                }
-            )
+            return {
+                "colonies": [
+                    {
+                        "name": c.get("name", ""),
+                        "display_name": c.get("display_name", c.get("name", "")),
+                        "description": c.get("description", ""),
+                        "member_count": c.get("member_count", 0),
+                    }
+                    for c in colonies
+                ]
+            }
 
     return ColonyListColoniesTool()
 
@@ -525,10 +506,12 @@ def colony_iter_posts(client: ColonyClient) -> Tool:
             "post_type": {"type": "string", "description": "Filter by post type.", "nullable": True},
             "max_results": {"type": "integer", "description": "Max posts to return (default: 50, max: 200).", "nullable": True},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, colony: str | None = None, sort: str | None = None, post_type: str | None = None, max_results: int | None = None) -> str:
+        def forward(
+            self, colony: str | None = None, sort: str | None = None, post_type: str | None = None, max_results: int | None = None
+        ) -> dict[str, Any]:
             capped = min(max_results or 50, 200)
             posts = []
             for p in client.iter_posts(colony=colony, sort=sort or "new", post_type=post_type, max_results=capped):
@@ -545,7 +528,7 @@ def colony_iter_posts(client: ColonyClient) -> Tool:
                         "created_at": p.get("created_at", ""),
                     }
                 )
-            return json.dumps({"posts": posts, "count": len(posts)})
+            return {"posts": posts, "count": len(posts)}
 
     return ColonyIterPostsTool()
 
@@ -565,19 +548,17 @@ def colony_create_post(client: ColonyClient) -> Tool:
             "colony": {"type": "string", "description": "Colony to post in. Default: general.", "nullable": True},
             "post_type": {"type": "string", "description": f"Post type: {', '.join(_WRITE_POST_TYPES)}.", "nullable": True},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, title: str, body: str, colony: str | None = None, post_type: str | None = None) -> str:
+        def forward(self, title: str, body: str, colony: str | None = None, post_type: str | None = None) -> dict[str, Any]:
             post = client.create_post(title, body, colony=colony or "general", post_type=post_type or "discussion")
-            return json.dumps(
-                {
-                    "id": post["id"],
-                    "title": post.get("title", title),
-                    "url": f"https://thecolony.cc/p/{post['id']}",
-                    "created_at": post.get("created_at", ""),
-                }
-            )
+            return {
+                "id": post["id"],
+                "title": post.get("title", title),
+                "url": f"https://thecolony.cc/p/{post['id']}",
+                "created_at": post.get("created_at", ""),
+            }
 
     return ColonyCreatePostTool()
 
@@ -593,19 +574,17 @@ def colony_create_comment(client: ColonyClient) -> Tool:
             "body": {"type": "string", "description": "Comment text."},
             "parent_id": {"type": "string", "description": "UUID of the comment to reply to.", "nullable": True},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, post_id: str, body: str, parent_id: str | None = None) -> str:
+        def forward(self, post_id: str, body: str, parent_id: str | None = None) -> dict[str, Any]:
             comment = client.create_comment(post_id, body, parent_id=parent_id)
-            return json.dumps(
-                {
-                    "id": comment["id"],
-                    "post_id": comment.get("post_id", post_id),
-                    "body": comment.get("body", body),
-                    "created_at": comment.get("created_at", ""),
-                }
-            )
+            return {
+                "id": comment["id"],
+                "post_id": comment.get("post_id", post_id),
+                "body": comment.get("body", body),
+                "created_at": comment.get("created_at", ""),
+            }
 
     return ColonyCreateCommentTool()
 
@@ -620,12 +599,12 @@ def colony_send_message(client: ColonyClient) -> Tool:
             "username": {"type": "string", "description": "Username of the recipient."},
             "body": {"type": "string", "description": "Message text."},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, username: str, body: str) -> str:
+        def forward(self, username: str, body: str) -> dict[str, Any]:
             msg = client.send_message(username, body)
-            return json.dumps({"id": msg.get("id", ""), "body": msg.get("body", body), "created_at": msg.get("created_at", "")})
+            return {"id": msg.get("id", ""), "body": msg.get("body", body), "created_at": msg.get("created_at", "")}
 
     return ColonySendMessageTool()
 
@@ -640,12 +619,12 @@ def colony_vote_post(client: ColonyClient) -> Tool:
             "post_id": {"type": "string", "description": "The UUID of the post."},
             "value": {"type": "integer", "description": "Vote value: 1 for upvote, -1 for downvote."},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, post_id: str, value: int) -> str:
+        def forward(self, post_id: str, value: int) -> dict[str, Any]:
             client.vote_post(post_id, value=value)
-            return json.dumps({"success": True, "post_id": post_id, "vote": value})
+            return {"success": True, "post_id": post_id, "vote": value}
 
     return ColonyVotePostTool()
 
@@ -660,12 +639,12 @@ def colony_vote_comment(client: ColonyClient) -> Tool:
             "comment_id": {"type": "string", "description": "The UUID of the comment."},
             "value": {"type": "integer", "description": "Vote value: 1 for upvote, -1 for downvote."},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, comment_id: str, value: int) -> str:
+        def forward(self, comment_id: str, value: int) -> dict[str, Any]:
             client.vote_comment(comment_id, value=value)
-            return json.dumps({"success": True, "comment_id": comment_id, "vote": value})
+            return {"success": True, "comment_id": comment_id, "vote": value}
 
     return ColonyVoteCommentTool()
 
@@ -680,12 +659,12 @@ def colony_react_post(client: ColonyClient) -> Tool:
             "post_id": {"type": "string", "description": "The UUID of the post."},
             "emoji": {"type": "string", "description": f"Reaction emoji: {', '.join(_EMOJI_VALUES)}."},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, post_id: str, emoji: str) -> str:
+        def forward(self, post_id: str, emoji: str) -> dict[str, Any]:
             client.react_post(post_id, emoji)
-            return json.dumps({"success": True, "post_id": post_id, "emoji": emoji})
+            return {"success": True, "post_id": post_id, "emoji": emoji}
 
     return ColonyReactPostTool()
 
@@ -700,12 +679,12 @@ def colony_react_comment(client: ColonyClient) -> Tool:
             "comment_id": {"type": "string", "description": "The UUID of the comment."},
             "emoji": {"type": "string", "description": f"Reaction emoji: {', '.join(_EMOJI_VALUES)}."},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, comment_id: str, emoji: str) -> str:
+        def forward(self, comment_id: str, emoji: str) -> dict[str, Any]:
             client.react_comment(comment_id, emoji)
-            return json.dumps({"success": True, "comment_id": comment_id, "emoji": emoji})
+            return {"success": True, "comment_id": comment_id, "emoji": emoji}
 
     return ColonyReactCommentTool()
 
@@ -720,12 +699,12 @@ def colony_vote_poll(client: ColonyClient) -> Tool:
             "post_id": {"type": "string", "description": "The UUID of the poll post."},
             "option_id": {"type": "string", "description": "The option ID to vote for."},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, post_id: str, option_id: str) -> str:
+        def forward(self, post_id: str, option_id: str) -> dict[str, Any]:
             result = client.vote_poll(post_id, option_id=option_id)
-            return json.dumps(result)
+            return result
 
     return ColonyVotePollTool()
 
@@ -737,12 +716,12 @@ def colony_follow(client: ColonyClient) -> Tool:
         name = "colony_follow"
         description = "Follow a user on The Colony. Subscribe to their posts and activity."
         inputs = {"user_id": {"type": "string", "description": "The UUID of the user to follow."}}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, user_id: str) -> str:
+        def forward(self, user_id: str) -> dict[str, Any]:
             result = client.follow(user_id)
-            return json.dumps(result)
+            return result
 
     return ColonyFollowTool()
 
@@ -754,12 +733,12 @@ def colony_unfollow(client: ColonyClient) -> Tool:
         name = "colony_unfollow"
         description = "Unfollow a user on The Colony."
         inputs = {"user_id": {"type": "string", "description": "The UUID of the user to unfollow."}}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, user_id: str) -> str:
+        def forward(self, user_id: str) -> dict[str, Any]:
             result = client.unfollow(user_id)
-            return json.dumps(result)
+            return result
 
     return ColonyUnfollowTool()
 
@@ -775,12 +754,12 @@ def colony_update_post(client: ColonyClient) -> Tool:
             "title": {"type": "string", "description": "New title (omit to keep current).", "nullable": True},
             "body": {"type": "string", "description": "New body text (omit to keep current).", "nullable": True},
         }
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, post_id: str, title: str | None = None, body: str | None = None) -> str:
+        def forward(self, post_id: str, title: str | None = None, body: str | None = None) -> dict[str, Any]:
             result = client.update_post(post_id, title=title, body=body)
-            return json.dumps({"id": result.get("id", post_id), "title": result.get("title", ""), "updated_at": result.get("updated_at", "")})
+            return {"id": result.get("id", post_id), "title": result.get("title", ""), "updated_at": result.get("updated_at", "")}
 
     return ColonyUpdatePostTool()
 
@@ -792,12 +771,12 @@ def colony_delete_post(client: ColonyClient) -> Tool:
         name = "colony_delete_post"
         description = "Delete a post on The Colony. Only the post author can delete. Irreversible."
         inputs = {"post_id": {"type": "string", "description": "The UUID of the post to delete."}}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, post_id: str) -> str:
+        def forward(self, post_id: str) -> dict[str, Any]:
             client.delete_post(post_id)
-            return json.dumps({"success": True, "post_id": post_id})
+            return {"success": True, "post_id": post_id}
 
     return ColonyDeletePostTool()
 
@@ -809,12 +788,12 @@ def colony_mark_notifications_read(client: ColonyClient) -> Tool:
         name = "colony_mark_notifications_read"
         description = "Mark all notifications as read on The Colony."
         inputs = {}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self) -> str:
+        def forward(self) -> dict[str, Any]:
             client.mark_notifications_read()
-            return json.dumps({"success": True})
+            return {"success": True}
 
     return ColonyMarkNotificationsReadTool()
 
@@ -826,12 +805,12 @@ def colony_join_colony(client: ColonyClient) -> Tool:
         name = "colony_join_colony"
         description = "Join a colony (sub-community) on The Colony."
         inputs = {"colony": {"type": "string", "description": "Colony name to join."}}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, colony: str) -> str:
+        def forward(self, colony: str) -> dict[str, Any]:
             result = client.join_colony(colony)
-            return json.dumps(result)
+            return result
 
     return ColonyJoinColonyTool()
 
@@ -843,12 +822,12 @@ def colony_leave_colony(client: ColonyClient) -> Tool:
         name = "colony_leave_colony"
         description = "Leave a colony (sub-community) on The Colony."
         inputs = {"colony": {"type": "string", "description": "Colony name to leave."}}
-        output_type = "string"
+        output_type = "object"
 
         @_safe
-        def forward(self, colony: str) -> str:
+        def forward(self, colony: str) -> dict[str, Any]:
             result = client.leave_colony(colony)
-            return json.dumps(result)
+            return result
 
     return ColonyLeaveColonyTool()
 
@@ -932,7 +911,7 @@ def colony_tools_dict(client: ColonyClient) -> dict[str, Tool]:
 # ── System prompt helper ────────────────────────────────────────
 
 
-def colony_system_prompt(client: ColonyClient) -> str:
+def colony_system_prompt(client: ColonyClient) -> dict[str, Any]:
     """Generate a system prompt with the authenticated agent's identity.
 
     Pass the result as ``instructions`` to a smolagents Agent.

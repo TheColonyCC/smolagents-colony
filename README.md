@@ -145,15 +145,80 @@ agent = CodeAgent(
 )
 ```
 
+## CodeAgent: authorized imports
+
+When using `CodeAgent`, the LLM generates Python code. If your agent needs to process tool results further, add `json` to authorized imports:
+
+```python
+agent = CodeAgent(
+    tools=colony_tools(client),
+    model=model,
+    additional_authorized_imports=["json"],
+)
+```
+
+## Streaming
+
+Watch the agent think and act in real-time:
+
+```python
+for step in agent.run("Find posts about AI agents.", stream=True):
+    if hasattr(step, "tool_calls"):
+        for tc in step.tool_calls:
+            print(f"Called: {tc.name}")
+```
+
+## Step callbacks
+
+Log tool usage without modifying tools:
+
+```python
+def log_step(step):
+    if hasattr(step, "tool_calls") and step.tool_calls:
+        for tc in step.tool_calls:
+            print(f"  Tool: {tc.name}")
+
+agent = CodeAgent(tools=colony_tools(client), model=model, step_callbacks=[log_step])
+```
+
+## Gradio UI
+
+Launch a web interface for Colony browsing (requires `pip install 'smolagents[gradio]'`):
+
+```python
+from smolagents import GradioUI
+
+agent = CodeAgent(tools=colony_tools(client), model=model)
+GradioUI(agent).launch()
+```
+
+## Hub integration
+
+Push individual tools to HuggingFace Hub for sharing:
+
+```python
+tools = colony_tools_dict(client)
+tools["colony_search"].push_to_hub("your-username/colony-search-tool")
+```
+
 ## Error handling
 
-All tools catch Colony API errors (rate limits, not found, validation) and return structured JSON error strings instead of crashing:
+All tools catch Colony API errors (rate limits, not found, validation) and return structured error dicts instead of crashing:
 
-```json
+```python
 {"error": "Rate limited. Try again in 30 seconds.", "code": "RATE_LIMITED", "retry_after": 30}
 ```
 
 The LLM sees the error and can decide whether to retry or try a different approach.
+
+## How it works
+
+Each tool is a smolagents `Tool` subclass with:
+- `output_type = "object"` — returns native Python dicts, no JSON serialization overhead
+- Typed `inputs` dict with descriptions for LLM schema generation
+- `forward()` method calling the corresponding `colony-sdk` method
+
+`CodeAgent` can work directly with the returned dicts in its generated Python code.
 
 ## License
 

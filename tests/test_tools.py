@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -182,8 +181,9 @@ def _mock_client(**overrides: Any) -> MagicMock:
     return client
 
 
-def _parse(result: str) -> Any:
-    return json.loads(result)
+def _result(result: Any) -> Any:
+    """Passthrough — tools now return dicts directly."""
+    return result
 
 
 # ── Bundle tests ────────────────────────────────────────────────
@@ -245,7 +245,7 @@ class TestSearch:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_search(c)
-        result = _parse(t(query="AI agents", limit=10, post_type="finding", sort="newest"))
+        result = _result(t(query="AI agents", limit=10, post_type="finding", sort="newest"))
         c.search.assert_called_once_with("AI agents", limit=10, post_type="finding", sort="newest")
         assert result["posts"][0]["id"] == "post-1"
         assert result["total"] == 1
@@ -255,7 +255,7 @@ class TestGetPosts:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_get_posts(c)
-        result = _parse(t(colony="crypto", sort="top", limit=5))
+        result = _result(t(colony="crypto", sort="top", limit=5))
         c.get_posts.assert_called_once()
         assert result["posts"][0]["id"] == "post-1"
 
@@ -264,7 +264,7 @@ class TestGetPost:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_get_post(c)
-        result = _parse(t(post_id="post-1"))
+        result = _result(t(post_id="post-1"))
         c.get_post.assert_called_once_with("post-1")
         assert result["body"] == "Full body"
 
@@ -273,7 +273,7 @@ class TestGetComments:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_get_comments(c)
-        result = _parse(t(post_id="post-1", max_comments=5))
+        result = _result(t(post_id="post-1", max_comments=5))
         c.iter_comments.assert_called_once_with("post-1", max_results=5)
         assert result["count"] == 1
 
@@ -282,7 +282,7 @@ class TestGetUser:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_get_user(c)
-        result = _parse(t(user_id="user-1"))
+        result = _result(t(user_id="user-1"))
         c.get_user.assert_called_once_with("user-1")
         assert result["karma"] == 42
 
@@ -291,7 +291,7 @@ class TestDirectory:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_directory(c)
-        _parse(t(query="python", user_type="agent", sort="newest", limit=10))
+        _result(t(query="python", user_type="agent", sort="newest", limit=10))
         c.directory.assert_called_once_with(query="python", user_type="agent", sort="newest", limit=10)
 
 
@@ -299,7 +299,7 @@ class TestGetMe:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_get_me(c)
-        result = _parse(t())
+        result = _result(t())
         c.get_me.assert_called_once()
         assert result["username"] == "myagent"
 
@@ -308,7 +308,7 @@ class TestGetNotifications:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_get_notifications(c)
-        result = _parse(t(unread_only=True, limit=10))
+        result = _result(t(unread_only=True, limit=10))
         c.get_notifications.assert_called_once()
         assert result["count"] == 1
 
@@ -317,7 +317,7 @@ class TestGetNotificationCount:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_get_notification_count(c)
-        result = _parse(t())
+        result = _result(t())
         assert result["count"] == 5
 
 
@@ -325,7 +325,7 @@ class TestGetUnreadCount:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_get_unread_count(c)
-        result = _parse(t())
+        result = _result(t())
         assert result["count"] == 3
 
 
@@ -333,7 +333,7 @@ class TestGetPoll:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_get_poll(c)
-        result = _parse(t(post_id="post-1"))
+        result = _result(t(post_id="post-1"))
         c.get_poll.assert_called_once_with("post-1")
         assert result["total_votes"] == 10
 
@@ -342,7 +342,7 @@ class TestListConversations:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_list_conversations(c)
-        result = _parse(t())
+        result = _result(t())
         c.list_conversations.assert_called_once()
         assert result["conversations"][0]["other_user"] == "bob"
 
@@ -351,7 +351,7 @@ class TestGetConversation:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_get_conversation(c)
-        result = _parse(t(username="bob"))
+        result = _result(t(username="bob"))
         c.get_conversation.assert_called_once_with("bob")
         assert result["messages"][0]["sender"] == "bob"
 
@@ -360,7 +360,7 @@ class TestListColonies:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_list_colonies(c)
-        result = _parse(t())
+        result = _result(t())
         c.get_colonies.assert_called_once()
         assert result["colonies"][0]["name"] == "general"
 
@@ -369,7 +369,7 @@ class TestIterPosts:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_iter_posts(c)
-        result = _parse(t(colony="general", sort="top", max_results=10))
+        result = _result(t(colony="general", sort="top", max_results=10))
         c.iter_posts.assert_called_once_with(colony="general", sort="top", post_type=None, max_results=10)
         assert result["count"] == 1
 
@@ -378,7 +378,7 @@ class TestCreatePost:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_create_post(c)
-        result = _parse(t(title="Hello", body="World", colony="findings", post_type="finding"))
+        result = _result(t(title="Hello", body="World", colony="findings", post_type="finding"))
         c.create_post.assert_called_once_with("Hello", "World", colony="findings", post_type="finding")
         assert "thecolony.cc" in result["url"]
 
@@ -387,7 +387,7 @@ class TestCreateComment:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_create_comment(c)
-        _parse(t(post_id="post-1", body="Nice", parent_id="c0"))
+        _result(t(post_id="post-1", body="Nice", parent_id="c0"))
         c.create_comment.assert_called_once_with("post-1", "Nice", parent_id="c0")
 
 
@@ -395,7 +395,7 @@ class TestSendMessage:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_send_message(c)
-        result = _parse(t(username="alice", body="Hi"))
+        result = _result(t(username="alice", body="Hi"))
         c.send_message.assert_called_once_with("alice", "Hi")
         assert result["id"] == "new-msg"
 
@@ -404,7 +404,7 @@ class TestVotePost:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_vote_post(c)
-        result = _parse(t(post_id="post-1", value=-1))
+        result = _result(t(post_id="post-1", value=-1))
         c.vote_post.assert_called_once_with("post-1", value=-1)
         assert result["success"] is True
 
@@ -413,7 +413,7 @@ class TestVoteComment:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_vote_comment(c)
-        _parse(t(comment_id="c1", value=1))
+        _result(t(comment_id="c1", value=1))
         c.vote_comment.assert_called_once_with("c1", value=1)
 
 
@@ -421,7 +421,7 @@ class TestReactPost:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_react_post(c)
-        result = _parse(t(post_id="post-1", emoji="fire"))
+        result = _result(t(post_id="post-1", emoji="fire"))
         c.react_post.assert_called_once_with("post-1", "fire")
         assert result["emoji"] == "fire"
 
@@ -430,7 +430,7 @@ class TestReactComment:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_react_comment(c)
-        result = _parse(t(comment_id="c1", emoji="heart"))
+        result = _result(t(comment_id="c1", emoji="heart"))
         c.react_comment.assert_called_once_with("c1", "heart")
         assert result["emoji"] == "heart"
 
@@ -439,7 +439,7 @@ class TestVotePoll:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_vote_poll(c)
-        _parse(t(post_id="post-1", option_id="opt-1"))
+        _result(t(post_id="post-1", option_id="opt-1"))
         c.vote_poll.assert_called_once_with("post-1", option_id="opt-1")
 
 
@@ -447,7 +447,7 @@ class TestFollow:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_follow(c)
-        _parse(t(user_id="user-1"))
+        _result(t(user_id="user-1"))
         c.follow.assert_called_once_with("user-1")
 
 
@@ -455,7 +455,7 @@ class TestUnfollow:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_unfollow(c)
-        _parse(t(user_id="user-1"))
+        _result(t(user_id="user-1"))
         c.unfollow.assert_called_once_with("user-1")
 
 
@@ -463,7 +463,7 @@ class TestUpdatePost:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_update_post(c)
-        result = _parse(t(post_id="post-1", title="Updated"))
+        result = _result(t(post_id="post-1", title="Updated"))
         c.update_post.assert_called_once_with("post-1", title="Updated", body=None)
         assert result["title"] == "Updated"
 
@@ -472,7 +472,7 @@ class TestDeletePost:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_delete_post(c)
-        result = _parse(t(post_id="post-1"))
+        result = _result(t(post_id="post-1"))
         c.delete_post.assert_called_once_with("post-1")
         assert result["success"] is True
 
@@ -481,7 +481,7 @@ class TestMarkNotificationsRead:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_mark_notifications_read(c)
-        result = _parse(t())
+        result = _result(t())
         c.mark_notifications_read.assert_called_once()
         assert result["success"] is True
 
@@ -490,7 +490,7 @@ class TestJoinColony:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_join_colony(c)
-        _parse(t(colony="crypto"))
+        _result(t(colony="crypto"))
         c.join_colony.assert_called_once_with("crypto")
 
 
@@ -498,7 +498,7 @@ class TestLeaveColony:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
         t = colony_leave_colony(c)
-        _parse(t(colony="crypto"))
+        _result(t(colony="crypto"))
         c.leave_colony.assert_called_once_with("crypto")
 
 
@@ -524,10 +524,10 @@ class TestSafeResult:
         err.retry_after = 30
 
         @_safe
-        def _fn() -> str:
+        def _fn() -> dict[str, Any]:
             raise err
 
-        result = json.loads(_fn())
+        result = _fn()
         assert result["code"] == "RATE_LIMITED"
         assert result["retry_after"] == 30
 
@@ -535,10 +535,10 @@ class TestSafeResult:
         from colony_sdk import ColonyNotFoundError
 
         @_safe
-        def _fn() -> str:
+        def _fn() -> dict[str, Any]:
             raise ColonyNotFoundError("Not found", 404, {})
 
-        result = json.loads(_fn())
+        result = _fn()
         assert result["code"] == "NOT_FOUND"
 
     def test_non_colony_error_propagates(self) -> None:
