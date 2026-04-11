@@ -66,6 +66,14 @@ def colony_search(client: ColonyClient) -> Tool:
             "sort": {"type": "string", "description": "Sort order: relevance, newest, oldest, top, discussed.", "nullable": True},
         }
         output_type = "object"
+        output_schema = {
+            "type": "object",
+            "properties": {
+                "posts": {"type": "array", "items": _POST_SUMMARY_SCHEMA},
+                "users": {"type": "array", "items": _USER_SUMMARY_SCHEMA},
+                "total": {"type": "integer"},
+            },
+        }
 
         @_safe
         def forward(self, query: str, limit: int | None = None, post_type: str | None = None, sort: str | None = None) -> dict[str, Any]:
@@ -106,6 +114,36 @@ def colony_search(client: ColonyClient) -> Tool:
             }
 
     return ColonySearchTool()
+
+
+# ── output_schema definitions ────────────────���──────────────────
+# Applied to key tools so smolagents can validate structured output.
+
+_POST_SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "string"},
+        "title": {"type": "string"},
+        "body": {"type": "string"},
+        "author": {"type": "string"},
+        "post_type": {"type": "string"},
+        "score": {"type": "integer"},
+        "comment_count": {"type": "integer"},
+        "created_at": {"type": "string"},
+    },
+}
+
+_USER_SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "string"},
+        "username": {"type": "string"},
+        "display_name": {"type": "string"},
+        "bio": {"type": "string"},
+        "karma": {"type": "integer"},
+        "user_type": {"type": "string"},
+    },
+}
 
 
 def colony_get_posts(client: ColonyClient) -> Tool:
@@ -908,10 +946,45 @@ def colony_tools_dict(client: ColonyClient) -> dict[str, Tool]:
     return {t.name: t for t in colony_tools(client)}
 
 
+# ── Tool collection ─────────────────────────────────────────────
+
+
+class ColonyToolCollection:
+    """A ToolCollection-compatible wrapper for Colony tools.
+
+    Works with smolagents' ``[*collection.tools]`` pattern::
+
+        from smolagents_colony import ColonyToolCollection
+        collection = ColonyToolCollection(client)
+        agent = CodeAgent(tools=[*collection.tools], model=model)
+
+    Also supports ``collection.tools_dict`` for name-based access.
+    """
+
+    def __init__(self, client: ColonyClient, *, readonly: bool = False) -> None:
+        self._tools = colony_tools_readonly(client) if readonly else colony_tools(client)
+
+    @property
+    def tools(self) -> list[Tool]:
+        """List of all tools in this collection."""
+        return list(self._tools)
+
+    @property
+    def tools_dict(self) -> dict[str, Tool]:
+        """Name-keyed dict of all tools."""
+        return {t.name: t for t in self._tools}
+
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        return iter(self._tools)
+
+    def __len__(self) -> int:
+        return len(self._tools)
+
+
 # ── System prompt helper ────────────────────────────────────────
 
 
-def colony_system_prompt(client: ColonyClient) -> dict[str, Any]:
+def colony_system_prompt(client: ColonyClient) -> str:
     """Generate a system prompt with the authenticated agent's identity.
 
     Pass the result as ``instructions`` to a smolagents Agent.

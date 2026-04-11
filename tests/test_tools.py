@@ -548,3 +548,114 @@ class TestSafeResult:
 
         with pytest.raises(ValueError, match="not a colony error"):
             _fn()
+
+
+# ── Per-tool error branch tests ─────────────────────────────────
+
+
+class TestToolErrorBranches:
+    def test_search_rate_limit(self) -> None:
+        from colony_sdk import ColonyRateLimitError
+
+        err = ColonyRateLimitError("Rate limited", 429, {})
+        err.retry_after = 60
+        c = _mock_client(search=MagicMock(side_effect=err))
+        t = colony_search(c)
+        result = t(query="test")
+        assert result["code"] == "RATE_LIMITED"
+        assert result["retry_after"] == 60
+
+    def test_get_post_not_found(self) -> None:
+        from colony_sdk import ColonyNotFoundError
+
+        c = _mock_client(get_post=MagicMock(side_effect=ColonyNotFoundError("Not found", 404, {})))
+        t = colony_get_post(c)
+        result = t(post_id="nonexistent")
+        assert result["code"] == "NOT_FOUND"
+
+    def test_create_post_api_error(self) -> None:
+        from colony_sdk import ColonyAPIError
+
+        c = _mock_client(create_post=MagicMock(side_effect=ColonyAPIError("Server error", 500, {})))
+        t = colony_create_post(c)
+        result = t(title="Test", body="Test")
+        assert result["code"] == "HTTP_500"
+
+    def test_vote_post_rate_limit(self) -> None:
+        from colony_sdk import ColonyRateLimitError
+
+        err = ColonyRateLimitError("Rate limited", 429, {})
+        err.retry_after = None
+        c = _mock_client(vote_post=MagicMock(side_effect=err))
+        t = colony_vote_post(c)
+        result = t(post_id="p1", value=1)
+        assert result["code"] == "RATE_LIMITED"
+        assert "Rate limited" in result["error"]
+
+
+# ── ColonyToolCollection tests ──────────────────────────────────
+
+
+class TestColonyToolCollection:
+    def test_full_collection(self) -> None:
+        from smolagents_colony import ColonyToolCollection
+
+        collection = ColonyToolCollection(_mock_client())
+        assert len(collection) == 30
+        assert len(collection.tools) == 30
+        assert "colony_search" in collection.tools_dict
+
+    def test_readonly_collection(self) -> None:
+        from smolagents_colony import ColonyToolCollection
+
+        collection = ColonyToolCollection(_mock_client(), readonly=True)
+        assert len(collection) == 15
+        names = {t.name for t in collection}
+        assert "colony_create_post" not in names
+        assert "colony_search" in names
+
+    def test_iterable(self) -> None:
+        from smolagents_colony import ColonyToolCollection
+
+        collection = ColonyToolCollection(_mock_client())
+        tools_list = [*collection]
+        assert len(tools_list) == 30
+
+    def test_spread_pattern(self) -> None:
+        from smolagents_colony import ColonyToolCollection
+
+        collection = ColonyToolCollection(_mock_client())
+        tools = [*collection.tools]
+        assert len(tools) == 30
+
+
+# ── output_schema tests ─────────────────────────────────────────
+
+
+class TestOutputSchema:
+    def test_search_has_output_schema(self) -> None:
+        t = colony_search(_mock_client())
+        assert hasattr(t, "output_schema")
+        assert t.output_schema is not None
+        assert "properties" in t.output_schema
+        assert "posts" in t.output_schema["properties"]
+
+
+# ── Tool serialization round-trip ───────────────────────────────
+
+
+class TestToolSerialization:
+    def test_tool_attributes_accessible(self) -> None:
+        """Verify tool metadata is accessible for inspection."""
+        t = colony_get_me(_mock_client())
+        assert t.name == "colony_get_me"
+        assert t.output_type == "object"
+        assert t.inputs == {}
+        assert "profile" in t.description.lower() or "colony" in t.description.lower()
+
+    def test_save_rejects_closure_tools(self, tmp_path: Any) -> None:
+        """Tools with client closures can't be saved (smolagents validates self-contained code)."""
+        t = colony_get_me(_mock_client())
+        save_dir = str(tmp_path / "colony_get_me_tool")
+        with pytest.raises(ValueError, match="validation failed"):
+            t.save(save_dir)
