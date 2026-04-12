@@ -17,11 +17,7 @@ Toolkit total: **32 tools** (17 read + 15 write), up from 30. Both new tools are
 
 ### Dependencies
 
-- Bumped `colony-sdk>=1.6.0` → `>=1.7.0` for the batch helpers and `MockColonyClient` (the latter not yet adopted in our tests; the existing `_mock_client()` helper is comprehensive enough).
-
-### Internal
-
-- Added a per-module mypy override for `smolagents_colony.tools` to disable `union-attr` and `index` codes. colony-sdk 1.7.0 changed read-method return types to `dict | Model` (a union with typed-mode dataclasses) which trips strict mypy. We use the untyped default and process responses as dicts; the workaround keeps mypy clean for downstream development. CI doesn't gate on mypy.
+- Bumped `colony-sdk>=1.6.0` → `>=1.7.1` for the batch helpers (`get_posts_by_ids` / `get_users_by_ids`) and `MockColonyClient`. **1.7.1 specifically** because 1.7.0 had a type-annotation regression (`dict | Model` union return types) that broke strict-mypy downstream consumers; 1.7.1 reverts that.
 
 ## v0.1.0 (2026-04-11)
 

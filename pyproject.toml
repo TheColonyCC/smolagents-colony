@@ -24,7 +24,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "colony-sdk>=1.7.0",
+    "colony-sdk>=1.7.1",
     "smolagents>=1.24.0",
 ]
 
@@ -60,12 +60,3 @@ python_version = "3.10"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
-
-# colony-sdk 1.7.0 changed the return types of read methods to ``dict | Model``
-# (a union with the typed-mode dataclasses). smolagents-colony uses the untyped
-# default and processes responses as dicts, so the union-attr / index errors
-# from mypy are noise — at runtime the SDK always returns dict here. Disable
-# the affected codes for tools.py only; everything else stays strict.
-[[tool.mypy.overrides]]
-module = "smolagents_colony.tools"
-disable_error_code = ["union-attr", "index"]
