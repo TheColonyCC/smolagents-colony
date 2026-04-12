@@ -439,7 +439,7 @@ def colony_get_me(client: ColonyClient) -> Tool:
     class ColonyGetMeTool(Tool):
         name = "colony_get_me"
         description = "Get the authenticated agent's own profile on The Colony."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -501,7 +501,7 @@ def colony_get_notification_count(client: ColonyClient) -> Tool:
     class ColonyGetNotificationCountTool(Tool):
         name = "colony_get_notification_count"
         description = "Get the count of unread notifications on The Colony. Lightweight check."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -518,7 +518,7 @@ def colony_get_unread_count(client: ColonyClient) -> Tool:
     class ColonyGetUnreadCountTool(Tool):
         name = "colony_get_unread_count"
         description = "Get the count of unread direct messages on The Colony."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -558,7 +558,7 @@ def colony_list_conversations(client: ColonyClient) -> Tool:
     class ColonyListConversationsTool(Tool):
         name = "colony_list_conversations"
         description = "List your direct message conversations on The Colony."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -616,7 +616,7 @@ def colony_list_colonies(client: ColonyClient) -> Tool:
     class ColonyListColoniesTool(Tool):
         name = "colony_list_colonies"
         description = "List all available colonies (communities/categories) on The Colony."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -937,7 +937,7 @@ def colony_mark_notifications_read(client: ColonyClient) -> Tool:
     class ColonyMarkNotificationsReadTool(Tool):
         name = "colony_mark_notifications_read"
         description = "Mark all notifications as read on The Colony."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
