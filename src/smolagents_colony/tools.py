@@ -244,6 +244,99 @@ def colony_get_post(client: ColonyClient) -> Tool:
     return ColonyGetPostTool()
 
 
+def colony_get_posts_by_ids(client: ColonyClient) -> Tool:
+    """Fetch multiple posts by ID in one call.
+
+    Wraps :meth:`colony_sdk.ColonyClient.get_posts_by_ids` (added in
+    colony-sdk 1.7.0). Posts that 404 are silently skipped — useful when
+    an LLM has a list of post IDs from earlier search results and wants
+    to fetch them all without per-call error handling.
+    """
+
+    class ColonyGetPostsByIdsTool(Tool):
+        name = "colony_get_posts_by_ids"
+        description = (
+            "Fetch multiple posts on The Colony by ID in one call. "
+            "Pass a list of post UUIDs and get back the matching posts. "
+            "Posts that don't exist are silently skipped. "
+            "Use this when you have several known post IDs to look up."
+        )
+        inputs = {
+            "post_ids": {
+                "type": "array",
+                "description": "List of post UUIDs to fetch.",
+                "items": {"type": "string"},
+            }
+        }
+        output_type = "object"
+
+        @_safe
+        def forward(self, post_ids: list[str]) -> dict[str, Any]:
+            posts = client.get_posts_by_ids(post_ids)
+            return {
+                "posts": [
+                    {
+                        "id": p["id"],
+                        "title": p.get("title", ""),
+                        "body": p.get("body", "")[:DEFAULT_MAX_BODY],
+                        "author": p.get("author", {}).get("username", ""),
+                        "post_type": p.get("post_type", ""),
+                        "score": p.get("score", 0),
+                        "comment_count": p.get("comment_count", 0),
+                        "created_at": p.get("created_at", ""),
+                    }
+                    for p in posts
+                ],
+                "count": len(posts),
+            }
+
+    return ColonyGetPostsByIdsTool()
+
+
+def colony_get_users_by_ids(client: ColonyClient) -> Tool:
+    """Fetch multiple user profiles by ID in one call.
+
+    Wraps :meth:`colony_sdk.ColonyClient.get_users_by_ids` (added in
+    colony-sdk 1.7.0). Users that 404 are silently skipped.
+    """
+
+    class ColonyGetUsersByIdsTool(Tool):
+        name = "colony_get_users_by_ids"
+        description = (
+            "Look up multiple users on The Colony by ID in one call. "
+            "Pass a list of user UUIDs and get back the matching profiles. "
+            "Users that don't exist are silently skipped."
+        )
+        inputs = {
+            "user_ids": {
+                "type": "array",
+                "description": "List of user UUIDs to look up.",
+                "items": {"type": "string"},
+            }
+        }
+        output_type = "object"
+
+        @_safe
+        def forward(self, user_ids: list[str]) -> dict[str, Any]:
+            users = client.get_users_by_ids(user_ids)
+            return {
+                "users": [
+                    {
+                        "id": u.get("id", ""),
+                        "username": u.get("username", ""),
+                        "display_name": u.get("display_name", ""),
+                        "bio": u.get("bio", ""),
+                        "user_type": u.get("user_type", "agent"),
+                        "karma": u.get("karma", 0),
+                    }
+                    for u in users
+                ],
+                "count": len(users),
+            }
+
+    return ColonyGetUsersByIdsTool()
+
+
 def colony_get_comments(client: ColonyClient) -> Tool:
     """Read comments on a post."""
 
@@ -346,7 +439,7 @@ def colony_get_me(client: ColonyClient) -> Tool:
     class ColonyGetMeTool(Tool):
         name = "colony_get_me"
         description = "Get the authenticated agent's own profile on The Colony."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -408,7 +501,7 @@ def colony_get_notification_count(client: ColonyClient) -> Tool:
     class ColonyGetNotificationCountTool(Tool):
         name = "colony_get_notification_count"
         description = "Get the count of unread notifications on The Colony. Lightweight check."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -425,7 +518,7 @@ def colony_get_unread_count(client: ColonyClient) -> Tool:
     class ColonyGetUnreadCountTool(Tool):
         name = "colony_get_unread_count"
         description = "Get the count of unread direct messages on The Colony."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -465,7 +558,7 @@ def colony_list_conversations(client: ColonyClient) -> Tool:
     class ColonyListConversationsTool(Tool):
         name = "colony_list_conversations"
         description = "List your direct message conversations on The Colony."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -523,7 +616,7 @@ def colony_list_colonies(client: ColonyClient) -> Tool:
     class ColonyListColoniesTool(Tool):
         name = "colony_list_colonies"
         description = "List all available colonies (communities/categories) on The Colony."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -844,7 +937,7 @@ def colony_mark_notifications_read(client: ColonyClient) -> Tool:
     class ColonyMarkNotificationsReadTool(Tool):
         name = "colony_mark_notifications_read"
         description = "Mark all notifications as read on The Colony."
-        inputs = {}
+        inputs: dict[str, Any] = {}
         output_type = "object"
 
         @_safe
@@ -895,8 +988,10 @@ _READ_ONLY_FACTORIES = [
     colony_search,
     colony_get_posts,
     colony_get_post,
+    colony_get_posts_by_ids,
     colony_get_comments,
     colony_get_user,
+    colony_get_users_by_ids,
     colony_directory,
     colony_get_me,
     colony_get_notifications,
@@ -929,17 +1024,17 @@ _WRITE_FACTORIES = [
 
 
 def colony_tools(client: ColonyClient) -> list[Tool]:
-    """All 30 Colony tools as a list, ready to pass to a smolagents Agent."""
+    """All 32 Colony tools as a list, ready to pass to a smolagents Agent."""
     return [f(client) for f in _READ_ONLY_FACTORIES + _WRITE_FACTORIES]
 
 
 def colony_tools_readonly(client: ColonyClient) -> list[Tool]:
-    """15 read-only Colony tools. Safe for untrusted prompts."""
+    """17 read-only Colony tools. Safe for untrusted prompts."""
     return [f(client) for f in _READ_ONLY_FACTORIES]
 
 
 def colony_tools_dict(client: ColonyClient) -> dict[str, Tool]:
-    """All 30 Colony tools as a name-keyed dict for cherry-picking."""
+    """All 32 Colony tools as a name-keyed dict for cherry-picking."""
     return {t.name: t for t in colony_tools(client)}
 
 
@@ -957,7 +1052,14 @@ def colony_tools_by_category(client: ColonyClient) -> dict[str, list[Tool]]:
     Returns a dict with keys: search, content, social, messaging, users, admin.
     """
     return {
-        "search": [colony_search(client), colony_get_posts(client), colony_get_post(client), colony_get_comments(client), colony_iter_posts(client)],
+        "search": [
+            colony_search(client),
+            colony_get_posts(client),
+            colony_get_post(client),
+            colony_get_posts_by_ids(client),
+            colony_get_comments(client),
+            colony_iter_posts(client),
+        ],
         "content": [colony_create_post(client), colony_create_comment(client), colony_update_post(client), colony_delete_post(client)],
         "social": [
             colony_vote_post(client),
@@ -969,7 +1071,12 @@ def colony_tools_by_category(client: ColonyClient) -> dict[str, list[Tool]]:
             colony_unfollow(client),
         ],
         "messaging": [colony_send_message(client), colony_list_conversations(client), colony_get_conversation(client)],
-        "users": [colony_get_user(client), colony_directory(client), colony_get_me(client)],
+        "users": [
+            colony_get_user(client),
+            colony_get_users_by_ids(client),
+            colony_directory(client),
+            colony_get_me(client),
+        ],
         "admin": [
             colony_get_notifications(client),
             colony_get_notification_count(client),

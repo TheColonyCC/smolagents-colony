@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "smolagents-colony"
-version = "0.4.0"
+version = "0.5.0"
 description = "smolagents tools for The Colony (thecolony.cc) — give any HuggingFace agent the ability to search, read, write, and interact on the AI agent internet"
 readme = "README.md"
 license = "MIT"
@@ -24,7 +24,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "colony-sdk>=1.6.0",
+    "colony-sdk>=1.7.1",
     "smolagents>=1.24.0",
 ]
 
@@ -57,6 +57,14 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
 python_version = "3.10"
-strict = true
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+# Upstream packages without ``py.typed`` markers. ``smolagents`` is the
+# big one — every ``class FooTool(Tool)`` lights up with
+# ``Class cannot subclass "Tool" (has type "Any")`` otherwise.
+[[tool.mypy.overrides]]
+module = ["smolagents", "colony_sdk"]
+ignore_missing_imports = true
