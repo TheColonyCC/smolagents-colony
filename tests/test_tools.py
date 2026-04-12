@@ -23,8 +23,10 @@ from smolagents_colony.tools import (
     colony_get_poll,
     colony_get_post,
     colony_get_posts,
+    colony_get_posts_by_ids,
     colony_get_unread_count,
     colony_get_user,
+    colony_get_users_by_ids,
     colony_iter_posts,
     colony_join_colony,
     colony_leave_colony,
@@ -190,9 +192,9 @@ def _result(result: Any) -> Any:
 
 
 class TestColonyTools:
-    def test_returns_30_tools(self) -> None:
+    def test_returns_32_tools(self) -> None:
         tools = colony_tools(_mock_client())
-        assert len(tools) == 30
+        assert len(tools) == 32
 
     def test_all_have_names(self) -> None:
         for t in colony_tools(_mock_client()):
@@ -204,9 +206,9 @@ class TestColonyTools:
 
 
 class TestColonyToolsReadonly:
-    def test_returns_15_tools(self) -> None:
+    def test_returns_17_tools(self) -> None:
         tools = colony_tools_readonly(_mock_client())
-        assert len(tools) == 15
+        assert len(tools) == 17
 
     def test_excludes_write_tools(self) -> None:
         names = {t.name for t in colony_tools_readonly(_mock_client())}
@@ -234,7 +236,7 @@ class TestColonyToolsDict:
     def test_returns_dict(self) -> None:
         d = colony_tools_dict(_mock_client())
         assert isinstance(d, dict)
-        assert len(d) == 30
+        assert len(d) == 32
         assert "colony_search" in d
 
 
@@ -258,6 +260,78 @@ class TestGetPosts:
         result = _result(t(colony="crypto", sort="top", limit=5))
         c.get_posts.assert_called_once()
         assert result["posts"][0]["id"] == "post-1"
+
+    def test_passes_post_type(self) -> None:
+        """post_type kwarg is forwarded to client.get_posts."""
+        c = _mock_client()
+        t = colony_get_posts(c)
+        _result(t(post_type="finding"))
+        call_kwargs = c.get_posts.call_args.kwargs
+        assert call_kwargs.get("post_type") == "finding"
+
+
+class TestGetPostsByIds:
+    def test_calls_sdk(self) -> None:
+        c = _mock_client()
+        c.get_posts_by_ids.return_value = [
+            {
+                "id": "p1",
+                "title": "Post 1",
+                "body": "Body 1",
+                "author": {"username": "u1"},
+                "post_type": "discussion",
+                "score": 5,
+                "comment_count": 1,
+                "created_at": "2026-01-01",
+            },
+            {
+                "id": "p2",
+                "title": "Post 2",
+                "body": "Body 2",
+                "author": {"username": "u2"},
+                "post_type": "finding",
+                "score": 3,
+                "comment_count": 0,
+                "created_at": "2026-01-02",
+            },
+        ]
+        t = colony_get_posts_by_ids(c)
+        result = _result(t(post_ids=["p1", "p2"]))
+        c.get_posts_by_ids.assert_called_once_with(["p1", "p2"])
+        assert result["count"] == 2
+        assert result["posts"][0]["id"] == "p1"
+        assert result["posts"][1]["title"] == "Post 2"
+
+    def test_empty_list_returns_empty(self) -> None:
+        c = _mock_client()
+        c.get_posts_by_ids.return_value = []
+        t = colony_get_posts_by_ids(c)
+        result = _result(t(post_ids=[]))
+        assert result["count"] == 0
+        assert result["posts"] == []
+
+
+class TestGetUsersByIds:
+    def test_calls_sdk(self) -> None:
+        c = _mock_client()
+        c.get_users_by_ids.return_value = [
+            {"id": "u1", "username": "alice", "display_name": "Alice", "bio": "A", "user_type": "agent", "karma": 10},
+            {"id": "u2", "username": "bob", "display_name": "Bob", "bio": "B", "user_type": "agent", "karma": 20},
+        ]
+        t = colony_get_users_by_ids(c)
+        result = _result(t(user_ids=["u1", "u2"]))
+        c.get_users_by_ids.assert_called_once_with(["u1", "u2"])
+        assert result["count"] == 2
+        assert result["users"][0]["username"] == "alice"
+        assert result["users"][1]["karma"] == 20
+
+    def test_empty_list_returns_empty(self) -> None:
+        c = _mock_client()
+        c.get_users_by_ids.return_value = []
+        t = colony_get_users_by_ids(c)
+        result = _result(t(user_ids=[]))
+        assert result["count"] == 0
+        assert result["users"] == []
 
 
 class TestGetPost:
@@ -312,6 +386,15 @@ class TestGetNotifications:
         c.get_notifications.assert_called_once()
         assert result["count"] == 1
 
+    def test_handles_non_list_response(self) -> None:
+        """If the server returns a malformed (non-list) response, fall back to []."""
+        c = _mock_client()
+        c.get_notifications.return_value = "unexpected string"
+        t = colony_get_notifications(c)
+        result = _result(t())
+        assert result["notifications"] == []
+        assert result["count"] == 0
+
 
 class TestGetNotificationCount:
     def test_calls_sdk(self) -> None:
@@ -346,6 +429,13 @@ class TestListConversations:
         c.list_conversations.assert_called_once()
         assert result["conversations"][0]["other_user"] == "bob"
 
+    def test_handles_non_list_response(self) -> None:
+        c = _mock_client()
+        c.list_conversations.return_value = "unexpected string"
+        t = colony_list_conversations(c)
+        result = _result(t())
+        assert result["conversations"] == []
+
 
 class TestGetConversation:
     def test_calls_sdk(self) -> None:
@@ -363,6 +453,13 @@ class TestListColonies:
         result = _result(t())
         c.get_colonies.assert_called_once()
         assert result["colonies"][0]["name"] == "general"
+
+    def test_handles_non_list_response(self) -> None:
+        c = _mock_client()
+        c.get_colonies.return_value = "unexpected string"
+        t = colony_list_colonies(c)
+        result = _result(t())
+        assert result["colonies"] == []
 
 
 class TestIterPosts:
@@ -601,15 +698,15 @@ class TestColonyToolCollection:
         from smolagents_colony import ColonyToolCollection
 
         collection = ColonyToolCollection(_mock_client())
-        assert len(collection) == 30
-        assert len(collection.tools) == 30
+        assert len(collection) == 32
+        assert len(collection.tools) == 32
         assert "colony_search" in collection.tools_dict
 
     def test_readonly_collection(self) -> None:
         from smolagents_colony import ColonyToolCollection
 
         collection = ColonyToolCollection(_mock_client(), readonly=True)
-        assert len(collection) == 15
+        assert len(collection) == 17
         names = {t.name for t in collection}
         assert "colony_create_post" not in names
         assert "colony_search" in names
@@ -619,14 +716,14 @@ class TestColonyToolCollection:
 
         collection = ColonyToolCollection(_mock_client())
         tools_list = [*collection]
-        assert len(tools_list) == 30
+        assert len(tools_list) == 32
 
     def test_spread_pattern(self) -> None:
         from smolagents_colony import ColonyToolCollection
 
         collection = ColonyToolCollection(_mock_client())
         tools = [*collection.tools]
-        assert len(tools) == 30
+        assert len(tools) == 32
 
 
 # ── output_schema tests ─────────────────────────────────────────
@@ -693,7 +790,7 @@ class TestColonyToolsByCategory:
 
         cats = colony_tools_by_category(_mock_client())
         total = sum(len(v) for v in cats.values())
-        assert total == 30
+        assert total == 32
 
     def test_search_category(self) -> None:
         from smolagents_colony import colony_tools_by_category

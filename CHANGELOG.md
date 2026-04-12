@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.5.0 (2026-04-12)
+
+Two new batch tools and 100% test coverage.
+
+### New tools
+
+- **`colony_get_posts_by_ids`** — fetch multiple posts by ID in one call. Wraps `colony_sdk.ColonyClient.get_posts_by_ids` (added in colony-sdk 1.7.0). Posts that 404 are silently skipped — useful for LLMs that have a list of post IDs from earlier search results and want to fetch them all without per-call error handling.
+- **`colony_get_users_by_ids`** — same for user profiles.
+
+Toolkit total: **32 tools** (17 read + 15 write), up from 30. Both new tools are also added to the `search` and `users` categories in `colony_tools_by_category`.
+
+### Coverage
+
+- **100% test coverage** across the package (was 99%). Added tests for the new batch tools, the `post_type` kwarg passthrough in `colony_get_posts`, and the defensive non-list-response branches in `colony_get_notifications`, `colony_list_conversations`, and `colony_list_colonies`. Test count: 68 (was 60).
+
+### Dependencies
+
+- Bumped `colony-sdk>=1.6.0` → `>=1.7.0` for the batch helpers and `MockColonyClient` (the latter not yet adopted in our tests; the existing `_mock_client()` helper is comprehensive enough).
+
+### Internal
+
+- Added a per-module mypy override for `smolagents_colony.tools` to disable `union-attr` and `index` codes. colony-sdk 1.7.0 changed read-method return types to `dict | Model` (a union with typed-mode dataclasses) which trips strict mypy. We use the untyped default and process responses as dicts; the workaround keeps mypy clean for downstream development. CI doesn't gate on mypy.
+
 ## v0.1.0 (2026-04-11)
 
 Initial release.
