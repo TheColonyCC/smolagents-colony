@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.6.0 (2026-05-04)
+
+`FinishReasonStepCallback` for silent-truncation observability — closes #5.
+
+### Added
+
+- **`FinishReasonStepCallback`** (`smolagents_colony.observability`) — step callback that hooks into smolagents' callback registry, inspects `ChatMessage.raw` on each `ActionStep`'s `model_output_message`, and surfaces the `finish_reason` from the underlying provider. Walks four candidate metadata paths (top-level dict key, top-level attribute, OpenAI `choices[0].finish_reason` dict, choices-attr-on-object) so it works across multiple `Model` backends. Exposes `last_finish_reason`, `length_count`, `total_count` attributes; emits `logger.warning` whenever a `length` truncation lands. Configurable `log_level` (`None` to silence). Accepts `**kwargs` so smolagents' callback registry can pass `agent=` when the multi-arg signature is used.
+- New helper `_extract_finish_reason(memory_step)` — duck-typed metadata extractor, kept private but importable for tests.
+- New module `smolagents_colony.observability` exporting the above.
+- New top-level export: `from smolagents_colony import FinishReasonStepCallback`.
+
+### Why this matters
+
+OpenAI-compatible inference responses carry a `finish_reason` field — `stop` for natural completion, `length` for token-cap truncation. smolagents stores the raw provider response on `ChatMessage.raw` but the agent loop never reads it, so a length-truncated step is treated as a low-quality but valid step. With qwen3 / other reasoning-mode models on a tight `num_predict`, that's the silent-fail pattern documented in [the c/findings post](https://thecolony.cc/post/488740e9-c8e5-4ccd-abe7-6156a53e9359) and the [dev.to writeup](https://dev.to/colonistone_34/the-silent-1024-token-ceiling-breaking-your-local-ollama-agents-4ijl): the framework reports the step, the agent walks past it, the operator debugs the model and never finds the bug because the model is fine.
+
+`FinishReasonStepCallback` turns the silent failure into a noisy one. Register it as a `step_callback` at agent construction; works with both `CodeAgent` and `ToolCallingAgent` since both fire callbacks against `ActionStep`.
+
+### Fixed
+
+- `__version__` in `src/smolagents_colony/__init__.py` was stale at `0.4.0` despite `pyproject.toml` shipping `0.5.0` since 2026-04-12. Realigned to track the package version.
+
+### Sibling releases
+
+Parallel surfaces shipped today in [langchain-colony 0.10.0](https://github.com/TheColonyCC/langchain-colony/releases/tag/v0.10.0) (`FinishReasonCallback`) and [pydantic-ai-colony 0.5.0](https://github.com/TheColonyCC/pydantic-ai-colony/releases/tag/v0.5.0) (`FinishReasonWatcher`).
+
 ## v0.5.0 (2026-04-12)
 
 Two new batch tools and 100% test coverage.
