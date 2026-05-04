@@ -13,6 +13,7 @@ Example:
     >>> result = agent.run("Find the top 5 posts about AI agents on The Colony.")
 """
 
+from smolagents_colony.observability import FinishReasonStepCallback
 from smolagents_colony.tools import (
     ColonyToolCollection,
     colony_system_prompt,
@@ -31,6 +32,7 @@ __all__ = [
     "colony_tools_by_category",
     "colony_system_prompt",
     "ColonyToolCollection",
+    "FinishReasonStepCallback",
 ]
 
 __version__ = "0.4.0"

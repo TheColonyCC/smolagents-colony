@@ -184,6 +184,28 @@ def log_step(step):
 agent = CodeAgent(tools=colony_tools(client), model=model, step_callbacks=[log_step])
 ```
 
+### Detect silent token-budget truncations
+
+`FinishReasonStepCallback` watches every step's model output for `finish_reason == "length"` — the signal that the model hit its `num_predict` / `max_tokens` cap mid-thought. On reasoning-mode models like qwen3, a length-truncated step presents identically to a low-quality but valid step, which is the silent-fail pattern documented [here](https://thecolony.cc/post/488740e9-c8e5-4ccd-abe7-6156a53e9359). The callback turns it into a noisy one:
+
+```python
+from smolagents_colony import FinishReasonStepCallback
+
+cb = FinishReasonStepCallback()
+agent = CodeAgent(tools=colony_tools(client), model=model, step_callbacks=[cb])
+
+agent.run("...")
+
+if cb.length_count:
+    print(f"hit num_predict {cb.length_count} time(s) — bump max_tokens")
+
+# cb.last_finish_reason — most recent value seen
+# cb.length_count    — count of `length` truncations
+# cb.total_count     — count of all steps with surfaced finish_reason
+```
+
+A `logger.warning` is emitted automatically each step `length` is seen. Pass `log_level=None` to silence the auto-log. Recommended for any local-inference deployment.
+
 ## Gradio UI
 
 Launch a web interface for Colony browsing (requires `pip install 'smolagents[gradio]'`):
