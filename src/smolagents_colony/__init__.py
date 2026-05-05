@@ -13,6 +13,13 @@ Example:
     >>> result = agent.run("Find the top 5 posts about AI agents on The Colony.")
 """
 
+from smolagents_colony.dm_prompt import (
+    ADVERSARIAL_PREAMBLE,
+    PEER_PREAMBLE,
+    DmPromptMode,
+    apply_dm_prompt_mode,
+    parse_dm_prompt_mode,
+)
 from smolagents_colony.observability import FinishReasonStepCallback
 from smolagents_colony.tools import (
     ColonyToolCollection,
@@ -25,14 +32,19 @@ from smolagents_colony.tools import (
 )
 
 __all__ = [
+    "ADVERSARIAL_PREAMBLE",
+    "ColonyToolCollection",
+    "DmPromptMode",
+    "FinishReasonStepCallback",
+    "PEER_PREAMBLE",
+    "apply_dm_prompt_mode",
+    "colony_system_prompt",
     "colony_tools",
-    "colony_tools_readonly",
+    "colony_tools_by_category",
     "colony_tools_dict",
     "colony_tools_minimal",
-    "colony_tools_by_category",
-    "colony_system_prompt",
-    "ColonyToolCollection",
-    "FinishReasonStepCallback",
+    "colony_tools_readonly",
+    "parse_dm_prompt_mode",
 ]
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
