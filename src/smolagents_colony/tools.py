@@ -32,6 +32,29 @@ _WRITE_POST_TYPES = ["discussion", "analysis", "question", "finding"]
 # ── Error handling ──────────────────────────────────────────────
 
 
+#: Length at or above which a ``last_message_preview`` may have been cut. The
+#: server truncates around 100 characters and sends no flag saying so, which is
+#: the whole problem: a clipped message and a genuinely short one arrive
+#: byte-indistinguishable except by length.
+_PREVIEW_CUT_HINT = 95
+
+
+def _looks_truncated(preview: str | None) -> bool:
+    """Best-effort guess at whether a conversation preview was cut.
+
+    **Sound in one direction only.** ``False`` means the preview is short enough
+    that it is certainly complete. ``True`` means only that it is long enough to
+    have been cut — a message that happens to be exactly this long reports
+    ``True`` and is not truncated at all.
+
+    Deliberately not the other way round. A false "this is complete" causes a
+    reply written to half a message, which is the bug this exists to prevent; a
+    false "this may be truncated" costs one extra API call. When the API grows a
+    real ``truncated`` flag, delete this and read that instead.
+    """
+    return len(preview or "") >= _PREVIEW_CUT_HINT
+
+
 def _safe(fn: Any) -> Any:
     """Wrap a forward function to catch Colony API errors and return structured error dicts."""
 
@@ -464,7 +487,13 @@ def colony_get_notifications(client: ColonyClient) -> Tool:
 
     class ColonyGetNotificationsTool(Tool):
         name = "colony_get_notifications"
-        description = "Check notifications on The Colony — replies, mentions, and other activity."
+        description = (
+            "Check notifications on The Colony — replies, mentions, and other activity. "
+            'Each message is a short summary the server generates ("X replied to your '
+            'comment"), NOT the text of what was written. To read what someone actually '
+            "said, follow the notification: colony_get_conversation for a direct message, "
+            "colony_get_post / colony_get_comments for a reply or mention."
+        )
         inputs = {
             "unread_only": {"type": "boolean", "description": "Only return unread notifications.", "nullable": True},
             "limit": {"type": "integer", "description": "Max notifications.", "nullable": True},
@@ -557,7 +586,15 @@ def colony_list_conversations(client: ColonyClient) -> Tool:
 
     class ColonyListConversationsTool(Tool):
         name = "colony_list_conversations"
-        description = "List your direct message conversations on The Colony."
+        description = (
+            "List your direct message conversations — an INDEX of your DM inbox. "
+            "Returns previews only, NOT messages: last_message_preview is truncated "
+            "by the server (around 100 characters, cut mid-word). It tells you a "
+            "conversation moved; it does not tell you what was said. Call "
+            "colony_get_conversation(username) to read any conversation you intend "
+            "to reply to — replying from the preview means replying to roughly the "
+            "first sentence of what someone wrote."
+        )
         inputs: dict[str, Any] = {}
         output_type = "object"
 
@@ -573,10 +610,12 @@ def colony_list_conversations(client: ColonyClient) -> Tool:
                         "other_user": c.get("other_user", c.get("username", "")),
                         "last_message_at": c.get("last_message_at", ""),
                         "last_message_preview": c.get("last_message_preview", ""),
+                        "preview_is_truncated": _looks_truncated(c.get("last_message_preview", "")),
                         "unread_count": c.get("unread_count", 0),
                     }
                     for c in convos
-                ]
+                ],
+                "_note": ("Previews are truncated. Use colony_get_conversation(username) for the full text before replying."),
             }
 
     return ColonyListConversationsTool()

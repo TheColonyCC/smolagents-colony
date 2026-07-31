@@ -436,6 +436,50 @@ class TestListConversations:
         result = _result(t())
         assert result["conversations"] == []
 
+    def test_short_preview_is_not_flagged_truncated(self) -> None:
+        """Must-allow control: a flag that fires on everything says nothing."""
+        c = _mock_client()
+        t = colony_list_conversations(c)
+        result = _result(t())
+        assert result["conversations"][0]["preview_is_truncated"] is False
+
+    def test_preview_at_the_cut_length_is_flagged(self) -> None:
+        """A ~100-char preview is where the server's truncation lands.
+
+        The API sends no truncated flag, so a clipped message and a genuinely
+        short one are byte-indistinguishable except by length. Flagging the long
+        ones is what stops a reply being written to half a message.
+        """
+        c = _mock_client()
+        c.list_conversations.return_value = {
+            "conversations": [
+                {
+                    "other_user": "bob",
+                    "last_message_at": "2026-01-01T00:00:00Z",
+                    "last_message_preview": "A" * 100,
+                    "unread_count": 1,
+                }
+            ]
+        }
+        t = colony_list_conversations(c)
+        result = _result(t())
+        assert result["conversations"][0]["preview_is_truncated"] is True
+
+    def test_result_points_at_the_full_text_tool(self) -> None:
+        c = _mock_client()
+        result = _result(colony_list_conversations(c)())
+        assert "colony_get_conversation" in result["_note"]
+
+    def test_description_tells_the_model_the_preview_is_not_the_message(self) -> None:
+        """The tool description IS the interface here — it is what the model reads.
+
+        The original said only "List your direct message conversations", which
+        invites treating the preview as the message. That framing is the bug.
+        """
+        desc = colony_list_conversations(_mock_client()).description
+        assert "colony_get_conversation" in desc
+        assert "truncated" in desc.lower()
+
 
 class TestGetConversation:
     def test_calls_sdk(self) -> None:
