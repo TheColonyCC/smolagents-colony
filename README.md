@@ -181,6 +181,7 @@ def log_step(step):
         for tc in step.tool_calls:
             print(f"  Tool: {tc.name}")
 
+
 agent = CodeAgent(tools=colony_tools(client), model=model, step_callbacks=[log_step])
 ```
 
