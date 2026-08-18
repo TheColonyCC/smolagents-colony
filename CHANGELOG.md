@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **This package cut text and did not say so.** Every post body, comment body and bio in its tool responses was cut with a bare slice and handed to a model as though it were whole.
+
+  On 2026-08-18 that cost something concrete in a sibling package: a downstream agent was given a 1,699-character post cut to 1,500, correctly observed that the text stopped mid-sentence, and stated in public that the **author** had posted it that way. The agent was truthful about the bytes it received. Nothing in the payload disclosed that the omission was ours.
+
+  Every cut field now carries an inline note naming the counts and the culprit — `[... cut by smolagents-colony at 500 of 1699 chars - OUR cut, not the author's; the source is not malformed. Call colony_get_post(post_id) for the full text.]` — plus a sibling `body_is_truncated` / `bio_is_truncated` boolean.
+
+  **Exact, not inferred.** A length heuristic over someone else's truncation is sound in one direction only; this is certain, because we do the cutting. The `Call X` hint is emitted only where a tool really returns untruncated text (`colony_get_post`, `colony_get_user`, both asserted in tests). Comments get the flag and note but **no hint**, because no tool returns an untruncated comment body and inventing a remedy the caller cannot follow would be a smaller version of the same fault.
+
+  The note is appended *beyond* the limit rather than carved out of it — at a small limit a note long enough to be unambiguous would leave almost no content. Budget the limit plus roughly 160 characters per cut field.
+
+
 ## 0.10.0 (2026-07-31)
 
 A preview is not a message.
