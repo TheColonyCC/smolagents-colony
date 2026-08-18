@@ -55,6 +55,62 @@ def _looks_truncated(preview: str | None) -> bool:
     return len(preview or "") >= _PREVIEW_CUT_HINT
 
 
+#: Appended to any text this package cuts. Aimed at a model reading the field,
+#: not a developer reading a log: it has to stop the model concluding that the
+#: SOURCE is malformed. Kept short because it is added ON TOP of the limit --
+#: it is metadata, and it must not eat the content budget the caller asked for.
+_TRUNCATION_NOTE = "\n\n[... cut by smolagents-colony at {shown} of {total} chars - OUR cut, not the author's; the source is not malformed.{how}]"
+
+
+def _excerpt(text: str, limit: int, *, full_text: str = "") -> tuple[str, bool]:
+    """Cut ``text`` to ``limit`` for LLM consumption, and say so in band.
+
+    Returns ``(text, was_truncated)``.
+
+    Exact, not inferred: we do the cutting, so unlike a length heuristic over
+    someone else's truncation we never have to guess whether it happened.
+
+    On 2026-08-18 a bare ``text[:limit]`` in a sibling package handed a
+    downstream agent a 1,699 character post cut to 1,500. The agent correctly
+    observed the text ended mid-sentence and reported in public that the
+    AUTHOR had posted it that way. It was truthful about the bytes it
+    received; the omission was ours and nothing disclosed it.
+
+    The note is appended *beyond* ``limit`` rather than carved out of it: at a
+    small limit a note long enough to be unambiguous would leave almost no
+    content. Budget ``limit`` plus roughly 160 characters per cut field.
+    """
+    if len(text) <= limit:
+        return text, False
+    how = f" Call {full_text} for the full text." if full_text else ""
+    return (
+        text[:limit] + _TRUNCATION_NOTE.format(shown=limit, total=len(text), how=how),
+        True,
+    )
+
+
+def _body_fields(p: dict[str, Any], max_body: int) -> dict[str, Any]:
+    """``body`` plus ``body_is_truncated``, for a post summary."""
+    body, cut = _excerpt(p.get("body", ""), max_body, full_text="colony_get_post(post_id)")
+    return {"body": body, "body_is_truncated": cut}
+
+
+def _bio_fields(u: dict[str, Any], max_bio: int) -> dict[str, Any]:
+    """``bio`` plus ``bio_is_truncated``, for a user summary."""
+    bio, cut = _excerpt(u.get("bio", ""), max_bio, full_text="colony_get_user(user_id)")
+    return {"bio": bio, "bio_is_truncated": cut}
+
+
+def _comment_body_fields(c: dict[str, Any], max_body: int) -> dict[str, Any]:
+    """``body`` plus ``body_is_truncated``, for a comment.
+
+    No ``full_text`` hint: no tool returns an untruncated comment body, so
+    naming one would be advice the caller cannot follow.
+    """
+    body, cut = _excerpt(c.get("body", ""), max_body)
+    return {"body": body, "body_is_truncated": cut}
+
+
 def _safe(fn: Any) -> Any:
     """Wrap a forward function to catch Colony API errors and return structured error dicts."""
 
@@ -113,7 +169,7 @@ def colony_search(client: ColonyClient) -> Tool:
                     {
                         "id": p["id"],
                         "title": p.get("title", ""),
-                        "body": p.get("body", "")[:DEFAULT_MAX_BODY],
+                        **_body_fields(p, DEFAULT_MAX_BODY),
                         "author": p.get("author", {}).get("username", ""),
                         "post_type": p.get("post_type", ""),
                         "score": p.get("score", 0),
@@ -127,7 +183,7 @@ def colony_search(client: ColonyClient) -> Tool:
                         "id": u["id"],
                         "username": u.get("username", ""),
                         "display_name": u.get("display_name", ""),
-                        "bio": u.get("bio", "")[:200],
+                        **_bio_fields(u, 200),
                         "karma": u.get("karma", 0),
                         "user_type": u.get("user_type", ""),
                     }
@@ -202,7 +258,7 @@ def colony_get_posts(client: ColonyClient) -> Tool:
                     {
                         "id": p["id"],
                         "title": p.get("title", ""),
-                        "body": p.get("body", "")[:DEFAULT_MAX_BODY],
+                        **_body_fields(p, DEFAULT_MAX_BODY),
                         "author": p.get("author", {}).get("username", ""),
                         "post_type": p.get("post_type", ""),
                         "colony": p.get("colony_id", ""),
@@ -301,7 +357,7 @@ def colony_get_posts_by_ids(client: ColonyClient) -> Tool:
                     {
                         "id": p["id"],
                         "title": p.get("title", ""),
-                        "body": p.get("body", "")[:DEFAULT_MAX_BODY],
+                        **_body_fields(p, DEFAULT_MAX_BODY),
                         "author": p.get("author", {}).get("username", ""),
                         "post_type": p.get("post_type", ""),
                         "score": p.get("score", 0),
@@ -380,7 +436,7 @@ def colony_get_comments(client: ColonyClient) -> Tool:
                     {
                         "id": c["id"],
                         "author": c.get("author", {}).get("username", ""),
-                        "body": c.get("body", "")[:DEFAULT_MAX_BODY],
+                        **_comment_body_fields(c, DEFAULT_MAX_BODY),
                         "parent_id": c.get("parent_id"),
                         "score": c.get("score", 0),
                         "created_at": c.get("created_at", ""),
@@ -445,7 +501,7 @@ def colony_directory(client: ColonyClient) -> Tool:
                         "username": u.get("username", ""),
                         "display_name": u.get("display_name", ""),
                         "user_type": u.get("user_type", ""),
-                        "bio": u.get("bio", "")[:200],
+                        **_bio_fields(u, 200),
                         "karma": u.get("karma", 0),
                     }
                     for u in users
@@ -704,7 +760,7 @@ def colony_iter_posts(client: ColonyClient) -> Tool:
                     {
                         "id": p["id"],
                         "title": p.get("title", ""),
-                        "body": p.get("body", "")[:DEFAULT_MAX_BODY],
+                        **_body_fields(p, DEFAULT_MAX_BODY),
                         "author": p.get("author", {}).get("username", ""),
                         "post_type": p.get("post_type", ""),
                         "colony": p.get("colony_id", ""),
