@@ -378,6 +378,46 @@ class TestGetMe:
         assert result["username"] == "myagent"
 
 
+_ACTOR = {"id": "user-2", "username": "alice", "display_name": "Alice", "user_type": "agent"}
+
+#: The server's shape for a reply notification (comment_preview since
+#: 2026-11-02) and a DM notification (conversation_id / message_id).
+_REPLY_NOTIFICATION = {
+    "id": "n-reply",
+    "notification_type": "reply",
+    "message": "Alice replied to your comment",
+    "actor": _ACTOR,
+    "post_id": "post-1",
+    "comment_id": "comment-9",
+    "conversation_id": None,
+    "message_id": None,
+    "wiki_page_id": None,
+    "comment_preview": {
+        "id": "comment-9",
+        "parent_id": "comment-1",
+        "created_at": "2026-11-18T17:00:00Z",
+        "excerpt": "I think the second approach is better because…",
+        "truncated": True,
+    },
+    "is_read": False,
+    "created_at": "2026-11-18T17:00:00Z",
+}
+_DM_NOTIFICATION = {
+    "id": "n-dm",
+    "notification_type": "direct_message",
+    "message": "Alice: Can you look at the build log before the release goes...",
+    "actor": _ACTOR,
+    "post_id": None,
+    "comment_id": None,
+    "conversation_id": "conv-1",
+    "message_id": "msg-7",
+    "wiki_page_id": None,
+    "comment_preview": None,
+    "is_read": False,
+    "created_at": "2026-11-18T17:01:00Z",
+}
+
+
 class TestGetNotifications:
     def test_calls_sdk(self) -> None:
         c = _mock_client()
@@ -385,6 +425,42 @@ class TestGetNotifications:
         result = _result(t(unread_only=True, limit=10))
         c.get_notifications.assert_called_once()
         assert result["count"] == 1
+
+    def test_reply_carries_the_comment_text(self) -> None:
+        """The comment itself, not only "X replied to your comment"."""
+        c = _mock_client()
+        c.get_notifications.return_value = [_REPLY_NOTIFICATION]
+        n = _result(colony_get_notifications(c)())["notifications"][0]
+        assert n["comment_id"] == "comment-9"
+        assert n["comment_preview"] == _REPLY_NOTIFICATION["comment_preview"]
+        assert n["comment_preview"]["truncated"] is True
+        assert n["actor"]["username"] == "alice"
+
+    def test_direct_message_carries_its_conversation_and_message(self) -> None:
+        c = _mock_client()
+        c.get_notifications.return_value = [_DM_NOTIFICATION]
+        n = _result(colony_get_notifications(c)())["notifications"][0]
+        assert n["conversation_id"] == "conv-1"
+        assert n["message_id"] == "msg-7"
+        assert n["comment_preview"] is None
+        # The username is what colony_get_conversation takes; the message line
+        # names only the display name.
+        assert n["actor"]["username"] == "alice"
+
+    def test_older_response_without_the_new_fields(self) -> None:
+        """Absent keys come back as None rather than raising."""
+        n = _result(colony_get_notifications(_mock_client())())["notifications"][0]
+        for key in ("actor", "comment_id", "comment_preview", "conversation_id", "message_id"):
+            assert n[key] is None
+
+    def test_description_says_where_the_text_is(self) -> None:
+        """The old description said a notification was "NOT the text of what
+        was written". Reply notifications now carry it, and saying otherwise
+        sends the model to look for it in the thread."""
+        desc = colony_get_notifications(_mock_client()).description
+        assert "NOT the text of what was written" not in desc
+        for phrase in ("comment_preview", "500", "truncated", "/api/v1/comments/", "conversation_id", "80"):
+            assert phrase in desc
 
     def test_handles_non_list_response(self) -> None:
         """If the server returns a malformed (non-list) response, fall back to []."""
@@ -436,6 +512,26 @@ class TestListConversations:
         result = _result(t())
         assert result["conversations"] == []
 
+    @staticmethod
+    def _preview_flag(**conversation: Any) -> bool:
+        c = _mock_client()
+        c.list_conversations.return_value = [
+            {"other_user": "bob", "last_message_at": "2026-01-01T00:00:00Z", "unread_count": 1, **conversation},
+        ]
+        flag = _result(colony_list_conversations(c)())["conversations"][0]["preview_is_truncated"]
+        assert isinstance(flag, bool)
+        return flag
+
+    def test_server_flag_true_is_read(self) -> None:
+        """Since 2026-11-18 the server says. A short word-cut preview is under
+        the length hint, so only the flag can report it."""
+        assert self._preview_flag(last_message_preview="Supercalifragilistic…", last_message_preview_truncated=True)
+
+    def test_server_flag_false_is_read(self) -> None:
+        """Control: a whole 120-character message is long, and not cut. The
+        flag beats the length guess in both directions."""
+        assert not self._preview_flag(last_message_preview="A" * 120, last_message_preview_truncated=False)
+
     def test_short_preview_is_not_flagged_truncated(self) -> None:
         """Must-allow control: a flag that fires on everything says nothing."""
         c = _mock_client()
@@ -443,27 +539,15 @@ class TestListConversations:
         result = _result(t())
         assert result["conversations"][0]["preview_is_truncated"] is False
 
-    def test_preview_at_the_cut_length_is_flagged(self) -> None:
-        """A ~100-char preview is where the server's truncation lands.
+    def test_fallback_without_the_flag_flags_a_long_preview(self) -> None:
+        """No ``last_message_preview_truncated`` (an older server): a server
+        before 2026-09-09 cut a bare ~100 characters, and a clipped message and
+        a genuinely short one differ only by length."""
+        assert self._preview_flag(last_message_preview="A" * 100)
 
-        The API sends no truncated flag, so a clipped message and a genuinely
-        short one are byte-indistinguishable except by length. Flagging the long
-        ones is what stops a reply being written to half a message.
-        """
-        c = _mock_client()
-        c.list_conversations.return_value = {
-            "conversations": [
-                {
-                    "other_user": "bob",
-                    "last_message_at": "2026-01-01T00:00:00Z",
-                    "last_message_preview": "A" * 100,
-                    "unread_count": 1,
-                }
-            ]
-        }
-        t = colony_list_conversations(c)
-        result = _result(t())
-        assert result["conversations"][0]["preview_is_truncated"] is True
+    def test_fallback_without_the_flag_flags_a_word_cut(self) -> None:
+        """No flag, but the "…" a server from 2026-09-09 marks its cut with."""
+        assert self._preview_flag(last_message_preview="See the attached…")
 
     def test_result_points_at_the_full_text_tool(self) -> None:
         c = _mock_client()
